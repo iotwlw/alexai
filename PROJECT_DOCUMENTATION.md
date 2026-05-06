@@ -9,6 +9,7 @@
 - 支持每行输入一个商品 URL 或 ASIN
 - 支持 Amazon 商品页路径：`/dp/{ASIN}`、`/{slug}/dp/{ASIN}`、`/gp/product/{ASIN}`
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
+- 提取价格标识：例如 Amazon `High price`
 - 提取 Rufus 模块：标题、全部提示按钮、问题按钮、操作按钮、是否存在 `Ask something else`
 - 保留批量队列、暂停/继续、停止、断点续传、失败重试
 - 自动导出 CSV，支持手动导出 JSON
@@ -43,6 +44,8 @@
 | 品牌 | `#bylineInfo` 或品牌属性 |
 | 评分 | 商品星级 |
 | 评价数 | 商品评价数量 |
+| 价格标识 | Amazon 价格洞察标识，例如 `High price` |
+| 是否High price | 是否检测到 `High price` |
 | Rufus标题 | 通常为 `Ask Rufus` |
 | Rufus按钮 | 全部 Rufus 按钮文案 |
 | Rufus问题 | 以 `?` 结尾的问题 |

@@ -590,12 +590,67 @@ function extractProductRufusData() {
             return queryAsin && /^[A-Z0-9]{10}$/i.test(queryAsin) ? queryAsin.toUpperCase() : '';
         }
 
+        function extractPriceInsight() {
+            const labels = [];
+            const seen = new Set();
+            const containers = Array.from(document.querySelectorAll([
+                '#rufus-price-ingress',
+                '#rufus-price-ingress-desktop',
+                '[id*="rufus-price-ingress" i]',
+                '[data-csa-c-content-id="rufus-price-ingress-desktop"]',
+                '[data-csa-c-slot-id*="rufus-price-ingress" i]',
+                '[data-csa-c-nile-action-id*="price_history" i]'
+            ].join(',')));
+
+            function addLabel(text) {
+                const normalized = cleanText(text);
+                if (!normalized) return;
+
+                const compact = normalized.replace(/\s+/g, ' ').trim();
+                const knownPriceInsight = /^(high|low|typical)\s+price$/i.test(compact) ||
+                                          /^price\s+(?:is\s+)?(?:high|low|typical)$/i.test(compact);
+
+                if (!knownPriceInsight || seen.has(compact.toLowerCase())) {
+                    return;
+                }
+
+                seen.add(compact.toLowerCase());
+                labels.push(compact);
+            }
+
+            for (const container of containers) {
+                const labelNodes = Array.from(container.querySelectorAll([
+                    '.price-insights-ingress-desktop-text',
+                    '[class*="price-insights" i]',
+                    '[class*="price-insight" i]'
+                ].join(',')));
+
+                for (const node of labelNodes) {
+                    addLabel(elementText(node));
+                }
+
+                const directText = elementText(container);
+                const match = directText.match(/\b(?:High|Low|Typical)\s+price\b/i);
+                if (match) {
+                    addLabel(match[0]);
+                }
+            }
+
+            const priceInsightLabel = labels[0] || '';
+            return {
+                priceInsightLabel,
+                highPriceDetected: /^high\s+price$/i.test(priceInsightLabel)
+            };
+        }
+
         const data = {
             asin: extractAsin(),
             productTitle: '',
             brand: '',
             rating: '',
             reviewCount: '',
+            priceInsightLabel: '',
+            highPriceDetected: false,
             rufusTitle: '',
             rufusFound: false,
             rufusPrompts: [],
@@ -647,6 +702,10 @@ function extractProductRufusData() {
         if (reviewMatch) {
             data.reviewCount = reviewMatch[1];
         }
+
+        const priceInsight = extractPriceInsight();
+        data.priceInsightLabel = priceInsight.priceInsightLabel;
+        data.highPriceDetected = priceInsight.highPriceDetected;
 
         const smidgetRufus = extractSmidgetPrompts();
         const rufus = findRufusContainer();

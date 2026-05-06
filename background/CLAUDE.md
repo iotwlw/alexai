@@ -19,6 +19,7 @@ Background 模块是扩展的队列和抓取核心，位于 `background/backgrou
 | `waitForProductContent(tabId)` | 等待商品标题或 Rufus 模块出现 |
 | `processUrl(url)` | 处理单个商品 URL |
 | `extractProductRufusData()` | 在页面上下文中执行的提取函数 |
+| `extractPriceInsight()` | 检测 `High price` 等价格标识 |
 | `extractSmidgetPrompts()` | 优先提取真实商品页 `#dpx-nice-widget-container` 中的 Rufus 按钮 |
 | `processBatch()` | 按批次处理 URL 队列 |
 | `startScraping()` | 初始化或恢复抓取任务 |

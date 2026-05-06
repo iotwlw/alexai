@@ -119,14 +119,67 @@
         return prompts;
     }
 
+    function extractPriceInsight() {
+        const labels = [];
+        const seen = new Set();
+        const containers = Array.from(document.querySelectorAll([
+            '#rufus-price-ingress',
+            '#rufus-price-ingress-desktop',
+            '[id*="rufus-price-ingress" i]',
+            '[data-csa-c-content-id="rufus-price-ingress-desktop"]',
+            '[data-csa-c-slot-id*="rufus-price-ingress" i]',
+            '[data-csa-c-nile-action-id*="price_history" i]'
+        ].join(',')));
+
+        function addLabel(text) {
+            const normalized = cleanText(text);
+            const knownPriceInsight = /^(high|low|typical)\s+price$/i.test(normalized) ||
+                                      /^price\s+(?:is\s+)?(?:high|low|typical)$/i.test(normalized);
+
+            if (!knownPriceInsight || seen.has(normalized.toLowerCase())) {
+                return;
+            }
+
+            seen.add(normalized.toLowerCase());
+            labels.push(normalized);
+        }
+
+        for (const container of containers) {
+            const labelNodes = Array.from(container.querySelectorAll([
+                '.price-insights-ingress-desktop-text',
+                '[class*="price-insights" i]',
+                '[class*="price-insight" i]'
+            ].join(',')));
+
+            for (const node of labelNodes) {
+                addLabel(node.innerText || node.textContent);
+            }
+
+            const directText = cleanText(container.innerText || container.textContent);
+            const match = directText.match(/\b(?:High|Low|Typical)\s+price\b/i);
+            if (match) {
+                addLabel(match[0]);
+            }
+        }
+
+        const priceInsightLabel = labels[0] || '';
+        return {
+            priceInsightLabel,
+            highPriceDetected: /^high\s+price$/i.test(priceInsightLabel)
+        };
+    }
+
     function extractRufusData() {
         const prompts = extractRufusPrompts();
+        const priceInsight = extractPriceInsight();
         const title = cleanText(document.querySelector('#productTitle')?.innerText) ||
                       cleanText(document.title.replace(/\s*-\s*Amazon\..*$/i, ''));
 
         return {
             asin: extractAsin(),
             productTitle: title,
+            priceInsightLabel: priceInsight.priceInsightLabel,
+            highPriceDetected: priceInsight.highPriceDetected,
             rufusTitle: prompts.length ? 'Ask Rufus' : '',
             rufusFound: prompts.length > 0 || /Ask\s+Rufus/i.test(document.body?.innerText || ''),
             rufusPrompts: prompts,

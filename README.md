@@ -41,6 +41,8 @@ B0D2R3KRFN
 | 品牌 | 页面显示的品牌或店铺名 |
 | 评分 | 星级评分 |
 | 评价数 | 商品评价数量 |
+| 价格标识 | Amazon 价格提示，例如 `High price` |
+| 是否High price | 是否检测到 `High price` 标识 |
 | Rufus标题 | 通常为 `Ask Rufus` |
 | Rufus按钮 | 提取到的全部 Rufus 按钮文案 |
 | Rufus问题 | 以问号结尾的问题类按钮 |

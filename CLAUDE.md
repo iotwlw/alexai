@@ -34,6 +34,8 @@
   "brand": "Lightdot",
   "rating": "4.3",
   "reviewCount": "102",
+  "priceInsightLabel": "High price",
+  "highPriceDetected": true,
   "rufusTitle": "Ask Rufus",
   "rufusFound": true,
   "rufusPrompts": ["Can it withstand harsh weather?"],
@@ -51,6 +53,7 @@
 
 - 通过 canonical URL、页面路径、隐藏输入提取 ASIN
 - 使用 `#productTitle`、`#bylineInfo`、评分区等选择器提取商品上下文
+- 使用 `#rufus-price-ingress .price-insights-ingress-desktop-text` 检测 `High price` 等价格标识
 - 搜索 `id/class/aria/data-*` 中包含 `rufus` 的元素
 - 优先读取真实商品页样本中的 `#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`
 - 通过页面可见文本回退查找 `Ask Rufus` 附近的按钮文案

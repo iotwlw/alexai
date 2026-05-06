@@ -125,6 +125,10 @@
             <input id="ASIN" name="ASIN" type="hidden" value="B0D2R3KRFN">
         </div>
 
+        <div class="panel" id="rufus-price-ingress" data-csa-c-content-id="rufus-price-ingress-desktop">
+            <span class="aok-align-center price-insights-ingress-desktop-text normal">High price</span>
+        </div>
+
         <div class="panel" id="dpx-nice-widget-container" data-blue-request-id="XQO1UWOQF3091MQM4NB7">
             <script type="a-state" data-a-state='{"key":"dpx-nice-state"}'>
                 {"marketplaceId":"ATVPDKIKX0DER","asin":"B0D2R3KRFN","locale":"en_US"}
@@ -231,6 +235,7 @@
                 .match(/(\d+(?:\.\d+)?)\s+out\s+of\s+5/i);
             const reviewMatch = cleanText(document.querySelector('#acrCustomerReviewText')?.innerText)
                 .match(/([\d,]+)\s+ratings?/i);
+            const priceInsightLabel = cleanText(document.querySelector('#rufus-price-ingress .price-insights-ingress-desktop-text')?.innerText);
 
             return {
                 asin: document.querySelector('#ASIN')?.value || '',
@@ -240,6 +245,8 @@
                     .replace(/\s+Store$/i, ''),
                 rating: ratingMatch ? ratingMatch[1] : '',
                 reviewCount: reviewMatch ? reviewMatch[1] : '',
+                priceInsightLabel,
+                highPriceDetected: /^high\s+price$/i.test(priceInsightLabel),
                 rufusTitle: prompts.length ? 'Ask Rufus' : '',
                 rufusFound: prompts.length > 0,
                 rufusPrompts: prompts,
