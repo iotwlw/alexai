@@ -321,14 +321,8 @@ async function handleStop() {
     }
 }
 
-// Export CSV
-function exportCSV() {
-    if (state.scrapedData.length === 0) {
-        showStatus('⚠️ 暂无数据可导出', 'warning');
-        return;
-    }
-
-    const headers = [
+function getExportHeaders() {
+    return [
         'ASIN',
         '商品标题',
         '品牌',
@@ -336,33 +330,90 @@ function exportCSV() {
         '评价数',
         '价格标识',
         '是否High price',
-        'Rufus标题',
-        'Rufus按钮',
-        'Rufus问题',
-        'Rufus操作',
-        '是否找到Rufus',
-        'Ask something else',
+        '问题1',
+        '问题2',
+        '问题3',
+        '问题4',
+        '问题5',
         'URL',
         '抓取时间'
     ];
+}
 
-    const rows = state.scrapedData.map(item => [
-        item.asin || '',
-        item.productTitle || '',
-        item.brand || '',
-        item.rating || '',
-        item.reviewCount || '',
-        item.priceInsightLabel || '',
-        item.highPriceDetected ? '是' : '否',
-        item.rufusTitle || '',
-        Array.isArray(item.rufusPrompts) ? item.rufusPrompts.join(' | ') : '',
-        Array.isArray(item.rufusQuestions) ? item.rufusQuestions.join(' | ') : '',
-        Array.isArray(item.rufusActions) ? item.rufusActions.join(' | ') : '',
-        item.rufusFound ? '是' : '否',
-        item.askSomethingElsePresent ? '是' : '否',
-        item.url || '',
-        item.scrapedAt || ''
-    ]);
+function getQuestionColumns(item) {
+    const prompts = [];
+    const seen = new Set();
+
+    function addPrompt(value) {
+        const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+        const key = normalized.toLowerCase();
+
+        if (!normalized || key === 'ask something else' || seen.has(key)) {
+            return;
+        }
+
+        seen.add(key);
+        prompts.push(normalized);
+    }
+
+    ['问题1', '问题2', '问题3', '问题4', '问题5'].forEach(key => addPrompt(item[key]));
+    ['question1', 'question2', 'question3', 'question4', 'question5'].forEach(key => addPrompt(item[key]));
+
+    if (Array.isArray(item.questions)) {
+        item.questions.forEach(addPrompt);
+    }
+
+    if (Array.isArray(item.rufusPrompts)) {
+        item.rufusPrompts.forEach(addPrompt);
+    }
+
+    if (prompts.length < 5) {
+        if (Array.isArray(item.rufusQuestions)) {
+            item.rufusQuestions.forEach(addPrompt);
+        }
+
+        if (Array.isArray(item.rufusActions)) {
+            item.rufusActions.forEach(addPrompt);
+        }
+    }
+
+    return Array.from({ length: 5 }, (_, index) => prompts[index] || '');
+}
+
+function buildExportRecord(item) {
+    const questions = getQuestionColumns(item);
+
+    return {
+        ASIN: item.asin || '',
+        商品标题: item.productTitle || '',
+        品牌: item.brand || '',
+        评分: item.rating || '',
+        评价数: item.reviewCount || '',
+        价格标识: item.priceInsightLabel || '',
+        '是否High price': item.highPriceDetected ? '是' : '否',
+        问题1: questions[0],
+        问题2: questions[1],
+        问题3: questions[2],
+        问题4: questions[3],
+        问题5: questions[4],
+        URL: item.url || '',
+        抓取时间: item.scrapedAt || ''
+    };
+}
+
+function getExportRecords() {
+    return state.scrapedData.map(buildExportRecord);
+}
+
+// Export CSV
+function exportCSV() {
+    if (state.scrapedData.length === 0) {
+        showStatus('⚠️ 暂无数据可导出', 'warning');
+        return;
+    }
+
+    const headers = getExportHeaders();
+    const rows = getExportRecords().map(record => headers.map(header => record[header] || ''));
 
     const csv = [headers, ...rows]
         .map(row => row.map(toCsvCell).join(','))
@@ -383,7 +434,7 @@ function exportJSON() {
         return;
     }
 
-    const json = JSON.stringify(state.scrapedData, null, 2);
+    const json = JSON.stringify(getExportRecords(), null, 2);
     downloadFile(json, 'amazon_rufus_data.json', 'application/json;charset=utf-8;');
     showStatus('✅ JSON文件已导出', 'success');
 }

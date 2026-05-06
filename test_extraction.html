@@ -236,6 +236,9 @@
             const reviewMatch = cleanText(document.querySelector('#acrCustomerReviewText')?.innerText)
                 .match(/([\d,]+)\s+ratings?/i);
             const priceInsightLabel = cleanText(document.querySelector('#rufus-price-ingress .price-insights-ingress-desktop-text')?.innerText);
+            const questions = prompts
+                .filter(prompt => !/^Ask something else$/i.test(prompt))
+                .slice(0, 5);
 
             return {
                 asin: document.querySelector('#ASIN')?.value || '',
@@ -247,12 +250,11 @@
                 reviewCount: reviewMatch ? reviewMatch[1] : '',
                 priceInsightLabel,
                 highPriceDetected: /^high\s+price$/i.test(priceInsightLabel),
-                rufusTitle: prompts.length ? 'Ask Rufus' : '',
-                rufusFound: prompts.length > 0,
-                rufusPrompts: prompts,
-                rufusQuestions: prompts.filter(prompt => prompt.endsWith('?')),
-                rufusActions: prompts.filter(prompt => !prompt.endsWith('?')),
-                askSomethingElsePresent: prompts.some(prompt => /^Ask something else$/i.test(prompt))
+                问题1: questions[0] || '',
+                问题2: questions[1] || '',
+                问题3: questions[2] || '',
+                问题4: questions[3] || '',
+                问题5: questions[4] || ''
             };
         }
 

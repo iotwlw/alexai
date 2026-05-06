@@ -7,7 +7,7 @@
 - 输入 Amazon 商品页 URL 或 ASIN
 - 自动打开商品页并等待动态内容加载
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
-- 提取 Rufus 信息：`Ask Rufus` 标题、全部按钮、问题按钮、操作按钮
+- 提取 Rufus 区块中的 5 个推荐问题/提示
 - 导出 CSV/JSON
 
 ## 关键文件
@@ -23,27 +23,26 @@
 | `README.md` | 用户使用说明 |
 | `example-urls.txt` | 商品 URL/ASIN 示例 |
 
-## 数据结构
+## 导出结构
 
-抓取结果核心字段：
+CSV/JSON 导出记录核心字段：
 
 ```json
 {
-  "asin": "B0D2R3KRFN",
-  "productTitle": "Product title",
-  "brand": "Lightdot",
-  "rating": "4.3",
-  "reviewCount": "102",
-  "priceInsightLabel": "High price",
-  "highPriceDetected": true,
-  "rufusTitle": "Ask Rufus",
-  "rufusFound": true,
-  "rufusPrompts": ["Can it withstand harsh weather?"],
-  "rufusQuestions": ["Can it withstand harsh weather?"],
-  "rufusActions": ["Compare with similar"],
-  "askSomethingElsePresent": true,
-  "url": "https://www.amazon.com/dp/B0D2R3KRFN?th=1",
-  "scrapedAt": "2026-05-05T00:00:00.000Z"
+  "ASIN": "B0D2R3KRFN",
+  "商品标题": "Product title",
+  "品牌": "Lightdot",
+  "评分": "4.3",
+  "评价数": "102",
+  "价格标识": "High price",
+  "是否High price": "是",
+  "问题1": "Can it withstand harsh weather?",
+  "问题2": "Does it have a motion sensor?",
+  "问题3": "Is installation hardware included?",
+  "问题4": "Why you might like this",
+  "问题5": "Compare with similar",
+  "URL": "https://www.amazon.com/dp/B0D2R3KRFN?th=1",
+  "抓取时间": "2026-05-05T00:00:00.000Z"
 }
 ```
 
@@ -57,7 +56,7 @@
 - 搜索 `id/class/aria/data-*` 中包含 `rufus` 的元素
 - 优先读取真实商品页样本中的 `#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`
 - 通过页面可见文本回退查找 `Ask Rufus` 附近的按钮文案
-- 识别问号结尾的问题，以及 `Ask something else`、`Compare with similar`、`Why you might like this` 等操作按钮
+- 提取 Rufus 推荐问题/提示，导出时过滤 `Ask something else` 并填入 `问题1` 到 `问题5`
 
 ## 验证
 
@@ -78,6 +77,6 @@ https://www.amazon.com/dp/B0D2R3KRFN?th=1
 
 ## 注意
 
-- Ask Rufus 是 Amazon 动态/个性化模块，页面不展示时导出 `rufusFound=false`。
+- Ask Rufus 是 Amazon 动态/个性化模块，页面不展示时 `问题1` 到 `问题5` 会留空。
 - 不要把抓取频率调得太高，保留随机延迟和批次休息。
 - 扩展打开后台标签页进行抓取，处理完会自动关闭。

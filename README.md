@@ -7,7 +7,7 @@
 | 功能 | 说明 |
 |------|------|
 | 批量导入 | 支持每行一个 Amazon 商品 URL 或 ASIN |
-| Ask Rufus 抓取 | 提取 Rufus 标题、提示按钮、问题按钮、操作按钮 |
+| Ask Rufus 抓取 | 提取 Rufus 区块中的 5 个推荐问题/提示 |
 | 商品上下文 | 同时导出 ASIN、商品标题、品牌、评分、评价数 |
 | 队列管理 | 支持批量处理、暂停、继续、停止 |
 | 防检测 | 随机延迟、模拟滚动、批次休息 |
@@ -43,17 +43,16 @@ B0D2R3KRFN
 | 评价数 | 商品评价数量 |
 | 价格标识 | Amazon 价格提示，例如 `High price` |
 | 是否High price | 是否检测到 `High price` 标识 |
-| Rufus标题 | 通常为 `Ask Rufus` |
-| Rufus按钮 | 提取到的全部 Rufus 按钮文案 |
-| Rufus问题 | 以问号结尾的问题类按钮 |
-| Rufus操作 | `Why you might like this`、`Compare with similar` 等操作按钮 |
-| 是否找到Rufus | 当前页面是否检测到 Rufus 模块 |
-| Ask something else | 是否出现 `Ask something else` 按钮 |
+| 问题1 | Rufus 第 1 个推荐问题/提示，不包含 `Ask something else` |
+| 问题2 | Rufus 第 2 个推荐问题/提示 |
+| 问题3 | Rufus 第 3 个推荐问题/提示 |
+| 问题4 | Rufus 第 4 个推荐问题/提示 |
+| 问题5 | Rufus 第 5 个推荐问题/提示 |
 | URL | 抓取的商品链接 |
 | 抓取时间 | ISO 时间戳 |
 
 ## 注意
 
-- Ask Rufus 是动态模块，页面未展示该模块时会导出 `是否找到Rufus=否`。
+- Ask Rufus 是动态模块，页面未展示该模块时 `问题1` 到 `问题5` 会留空。
 - Amazon 商品页结构和个性化展示可能变化，建议保留合理延迟。
 - 本工具仅用于学习研究，请遵守 Amazon 网站使用条款和相关法律法规。

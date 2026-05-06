@@ -32,4 +32,4 @@ Background 模块是扩展的队列和抓取核心，位于 `background/backgrou
 - 商品标题
 - Rufus 模块或 Rufus 按钮
 
-未展示 Rufus 的商品页也会作为成功结果导出，并标记 `rufusFound=false`。
+未展示 Rufus 的商品页也会作为成功结果导出，导出层会将 `问题1` 到 `问题5` 留空。

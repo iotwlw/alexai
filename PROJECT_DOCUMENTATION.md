@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本项目是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 `Ask Rufus` 模块信息。用户可以导入商品 URL 或 ASIN，扩展按队列打开页面，等待动态内容加载，提取 Rufus 提示按钮并导出为 CSV/JSON。
+本项目是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 `Ask Rufus` 模块信息。用户可以导入商品 URL 或 ASIN，扩展按队列打开页面，等待动态内容加载，提取 Rufus 区块中的 5 个推荐问题/提示并导出为 CSV/JSON。
 
 ## 需求
 
@@ -10,7 +10,7 @@
 - 支持 Amazon 商品页路径：`/dp/{ASIN}`、`/{slug}/dp/{ASIN}`、`/gp/product/{ASIN}`
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
 - 提取价格标识：例如 Amazon `High price`
-- 提取 Rufus 模块：标题、全部提示按钮、问题按钮、操作按钮、是否存在 `Ask something else`
+- 提取 Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
 - 保留批量队列、暂停/继续、停止、断点续传、失败重试
 - 自动导出 CSV，支持手动导出 JSON
 
@@ -46,12 +46,11 @@
 | 评价数 | 商品评价数量 |
 | 价格标识 | Amazon 价格洞察标识，例如 `High price` |
 | 是否High price | 是否检测到 `High price` |
-| Rufus标题 | 通常为 `Ask Rufus` |
-| Rufus按钮 | 全部 Rufus 按钮文案 |
-| Rufus问题 | 以 `?` 结尾的问题 |
-| Rufus操作 | 非问题操作按钮 |
-| 是否找到Rufus | 是否检测到 Rufus 模块或按钮 |
-| Ask something else | 是否检测到该按钮 |
+| 问题1 | Rufus 第 1 个推荐问题/提示，不包含 `Ask something else` |
+| 问题2 | Rufus 第 2 个推荐问题/提示 |
+| 问题3 | Rufus 第 3 个推荐问题/提示 |
+| 问题4 | Rufus 第 4 个推荐问题/提示 |
+| 问题5 | Rufus 第 5 个推荐问题/提示 |
 | URL | 抓取链接 |
 | 抓取时间 | ISO 时间戳 |
 
