@@ -1,0 +1,5 @@
+# Amazon商品页URL或ASIN示例
+# 每行一个输入，以#开头的是注释行
+
+https://www.amazon.com/dp/B0D2R3KRFN?th=1
+B0D2R3KRFN

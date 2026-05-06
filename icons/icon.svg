@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="url(#grad)"/>
+
+  <!-- Cart Icon -->
+  <g transform="translate(32, 32)">
+    <!-- Cart body -->
+    <path d="M8 8 L12 8 L16 40 L56 40 L60 16 L20 16" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Cart wheels -->
+    <circle cx="24" cy="52" r="6" fill="white"/>
+    <circle cx="48" cy="52" r="6" fill="white"/>
+    <!-- Cart handle -->
+    <path d="M4 4 L8 8" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Data indicator -->
+  <circle cx="100" cy="28" r="12" fill="#ef4444"/>
+  <text x="100" y="33" text-anchor="middle" fill="white" font-size="14" font-weight="bold">3</text>
+</svg>
