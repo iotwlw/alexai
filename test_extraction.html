@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amazon Rufus 提取测试</title>
+    <title>Amazon Alexa for Shopping 提取测试</title>
     <style>
         * {
             box-sizing: border-box;
@@ -111,8 +111,8 @@
 <body>
     <div class="page">
         <div class="panel">
-            <h1>Amazon Rufus 提取测试</h1>
-            <p>本页模拟 Amazon 商品页中的 Ask Rufus 区块，用于验证按钮文案提取规则。</p>
+            <h1>Amazon Alexa for Shopping 提取测试</h1>
+            <p>本页模拟 Amazon 商品页中的 Alexa for Shopping/Rufus 区块，用于验证按钮文案提取规则。</p>
         </div>
 
         <div class="panel">
@@ -187,6 +187,8 @@
             if (!normalized || normalized.length > 140) return false;
             if (/^Ask\s+Rufus$/i.test(normalized)) return false;
             if (/Ask\s+Rufus/i.test(normalized)) return false;
+            if (/^Alexa\s+for\s+Shopping$/i.test(normalized)) return false;
+            if (/^Ask\s+Alexa$/i.test(normalized)) return false;
             if ((normalized.match(/\?/g) || []).length > 1) return false;
 
             const lower = normalized.toLowerCase();

@@ -441,7 +441,7 @@ function exportCSV() {
         .map(row => row.map(toCsvCell).join(','))
         .join('\n');
 
-    downloadFile(csv, 'amazon_rufus_data.csv', 'text/csv;charset=utf-8;');
+    downloadFile(csv, 'alexai_data.csv', 'text/csv;charset=utf-8;');
     showStatus('✅ CSV文件已导出', 'success');
 }
 
@@ -457,7 +457,7 @@ function exportJSON() {
     }
 
     const json = JSON.stringify(getExportRecords(), null, 2);
-    downloadFile(json, 'amazon_rufus_data.json', 'application/json;charset=utf-8;');
+    downloadFile(json, 'alexai_data.json', 'application/json;charset=utf-8;');
     showStatus('✅ JSON文件已导出', 'success');
 }
 

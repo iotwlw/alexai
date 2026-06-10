@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Amazon Rufus信息抓取工具",
+  "name": "Amazon Alexa for Shopping 信息抓取工具",
   "version": "1.0.0",
-  "description": "智能抓取Amazon商品页Ask Rufus提示信息，支持批量URL、断点续传、数据导出",
+  "description": "alexai：智能抓取Amazon商品页Alexa for Shopping提示信息，兼容Ask Rufus旧页面，支持批量URL、断点续传、数据导出",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

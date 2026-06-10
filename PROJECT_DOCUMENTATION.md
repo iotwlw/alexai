@@ -1,8 +1,8 @@
-# Amazon Rufus 信息抓取工具 - 设计文档
+# alexai - Amazon Alexa for Shopping 信息抓取工具设计文档
 
 ## 项目概述
 
-本项目是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 `Ask Rufus` 模块信息。用户可以导入商品 URL 或 ASIN，扩展按队列动态打开 2-5 个后台窗口，提取 Rufus 区块中的 5 个推荐问题/提示并导出为 CSV/JSON。
+alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 Alexa for Shopping 模块信息，并兼容 `Ask Rufus` 旧页面结构。用户可以导入商品 URL 或 ASIN，扩展按队列动态打开 2-5 个后台窗口，提取 5 个推荐问题/提示并导出为 CSV/JSON。
 
 ## 需求
 
@@ -10,7 +10,7 @@
 - 支持 Amazon 商品页路径：`/dp/{ASIN}`、`/{slug}/dp/{ASIN}`、`/gp/product/{ASIN}`
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
 - 提取价格标识：例如 Amazon `High price`
-- 提取 Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
+- 提取 Alexa for Shopping/Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
 - 保留动态并发队列、暂停/继续、停止、断点续传、失败重试
 - 自动导出 CSV，支持手动导出 JSON
 
@@ -30,7 +30,7 @@
 3. 用户点击开始，Popup 向 Background 发送 `start`
 4. Background 抽取 2-5 个目标并发窗口数并创建后台标签页
 5. Background 不等待页面 `complete`，而是轮询注入 `extractProductRufusData()`
-6. 单页提取到 Rufus 或商品上下文后立即关闭当前窗口
+6. 单页提取到 Alexa for Shopping/Rufus 或商品上下文后立即关闭当前窗口
 7. 调度器按随机延迟补充新窗口，并在 2-5 范围内动态调整目标并发
 8. 结果写入队列数据并保存到 `chrome.storage.local`
 9. Popup 接收进度消息并刷新 UI
@@ -47,17 +47,18 @@
 | 评价数 | 商品评价数量 |
 | 价格标识 | Amazon 价格洞察标识，例如 `High price` |
 | 是否High price | 是否检测到 `High price` |
-| 问题1 | Rufus 第 1 个推荐问题/提示，不包含 `Ask something else` |
-| 问题2 | Rufus 第 2 个推荐问题/提示 |
-| 问题3 | Rufus 第 3 个推荐问题/提示 |
-| 问题4 | Rufus 第 4 个推荐问题/提示 |
-| 问题5 | Rufus 第 5 个推荐问题/提示 |
+| 问题1 | Alexa for Shopping/Rufus 第 1 个推荐问题/提示，不包含 `Ask something else` |
+| 问题2 | Alexa for Shopping/Rufus 第 2 个推荐问题/提示 |
+| 问题3 | Alexa for Shopping/Rufus 第 3 个推荐问题/提示 |
+| 问题4 | Alexa for Shopping/Rufus 第 4 个推荐问题/提示 |
+| 问题5 | Alexa for Shopping/Rufus 第 5 个推荐问题/提示 |
 | URL | 抓取链接 |
 | 抓取时间 | ISO 时间戳 |
 
 ## 风险
 
-- Ask Rufus 是动态/个性化模块，不是每个用户、地区、商品都展示。
+- Alexa for Shopping 是动态/个性化模块，不是每个用户、地区、商品都展示。
+- Amazon 页面 DOM 可能仍保留 Rufus 旧命名，提取层保留 Rufus 选择器和数据属性以兼容旧结构。
 - Amazon DOM 可能调整，提取逻辑需要通过多选择器和文本回退保持弹性。
-- 已按 `example/Lightdot 4Pack 200W LED Wall Pack Lights.html` 校准真实 Rufus 结构：`#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`。
+- 已按 `example/Lightdot 4Pack 200W LED Wall Pack Lights.html` 校准真实旧 Rufus 结构：`#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`。
 - 过高频率可能触发验证或限制，应保留随机补位延迟和批次休息。

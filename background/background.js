@@ -1,4 +1,4 @@
-// Background Service Worker - Amazon Rufus 智能队列管理系统
+// Background Service Worker - alexai 智能队列管理系统
 
 // 队列状态
 const queueState = {
@@ -353,7 +353,7 @@ async function processUrl(url) {
     return { success: false, error: lastError?.message || 'Failed to extract data', url };
 }
 
-// 在页面中执行的函数（提取商品页 Ask Rufus 数据）
+// 在页面中执行的函数（提取商品页 Alexa for Shopping/Rufus 数据）
 function extractProductRufusData() {
     try {
         function cleanText(value) {
@@ -362,6 +362,9 @@ function extractProductRufusData() {
                 .replace(/\s+/g, ' ')
                 .trim();
         }
+
+        const assistantTextPattern = /Ask\s+Rufus|Rufus|Alexa\s+for\s+Shopping|Ask\s+Alexa/i;
+        const assistantAttrPattern = /rufus|alexa-shopping/i;
 
         function getAttributeText(element) {
             if (!element?.getAttribute) return '';
@@ -498,7 +501,7 @@ function extractProductRufusData() {
             for (let depth = 0; current && depth < 7; depth++) {
                 const text = elementText(current);
                 const attrs = attrBlob(current);
-                const hasRufus = /rufus/i.test(`${text} ${attrs}`);
+                const hasRufus = assistantTextPattern.test(text) || assistantAttrPattern.test(attrs);
                 const textLengthOk = text.length > 0 && text.length < 1600;
 
                 if (textLengthOk) {
@@ -520,6 +523,8 @@ function extractProductRufusData() {
             if (!normalized) return false;
             if (/^Ask\s+Rufus$/i.test(normalized)) return false;
             if (/Ask\s+Rufus/i.test(normalized)) return false;
+            if (/^Alexa\s+for\s+Shopping$/i.test(normalized)) return false;
+            if (/^Ask\s+Alexa$/i.test(normalized)) return false;
             if (normalized.length > 140) return false;
 
             const questionMarks = (normalized.match(/\?/g) || []).length;
@@ -567,6 +572,9 @@ function extractProductRufusData() {
                 '[data-rufus-quick-prompt]',
                 '[data-dpx-rufus-connect]',
                 '[data-rufus-action]',
+                '[id*="alexa-shopping" i]',
+                '[class*="alexa-shopping" i]',
+                '[aria-label*="Alexa for Shopping" i]',
                 '.small-widget-pill',
                 '.rufus-pill',
                 '[data-csa-c-type="button"]'
@@ -641,7 +649,7 @@ function extractProductRufusData() {
                 .map(cleanText)
                 .filter(Boolean);
 
-            const askRufusIndex = lines.findIndex(line => /Ask\s+Rufus/i.test(line));
+            const askRufusIndex = lines.findIndex(line => assistantTextPattern.test(line));
             if (askRufusIndex === -1) return [];
 
             const prompts = [];
@@ -668,14 +676,14 @@ function extractProductRufusData() {
                 const attrs = attrBlob(element);
                 const combined = `${text} ${attrs}`;
 
-                if (/Ask\s+Rufus|Rufus/i.test(combined)) {
+                if (assistantTextPattern.test(combined) || assistantAttrPattern.test(attrs)) {
                     const container = climbToContainer(element);
                     const prompts = extractPromptTexts(container);
                     const containerText = elementText(container);
                     let score = 0;
 
-                    if (/Ask\s+Rufus/i.test(containerText)) score += 10;
-                    if (/rufus/i.test(attrBlob(container))) score += 8;
+                    if (assistantTextPattern.test(containerText)) score += 10;
+                    if (assistantAttrPattern.test(attrBlob(container))) score += 8;
                     score += prompts.length * 3;
                     if (containerText.length < 1200) score += 2;
 
@@ -837,14 +845,14 @@ function extractProductRufusData() {
         data.rufusQuestions = allPrompts.filter(prompt => prompt.endsWith('?'));
         data.rufusActions = allPrompts.filter(prompt => !prompt.endsWith('?'));
         data.askSomethingElsePresent = allPrompts.some(prompt => /^Ask something else$/i.test(prompt));
-        data.rufusFound = /Ask\s+Rufus/i.test(elementText(smidgetRufus.container)) ||
-                          /Ask\s+Rufus/i.test(elementText(rufus.container)) ||
+        data.rufusFound = assistantTextPattern.test(elementText(smidgetRufus.container)) ||
+                          assistantTextPattern.test(elementText(rufus.container)) ||
                           allPrompts.length > 0;
-        data.rufusTitle = data.rufusFound ? 'Ask Rufus' : '';
+        data.rufusTitle = data.rufusFound ? 'Alexa for Shopping' : '';
 
         return data;
     } catch (error) {
-        console.error('Extract Rufus data error:', error);
+        console.error('Extract Alexa for Shopping data error:', error);
         return null;
     }
 }
@@ -1051,7 +1059,7 @@ async function completeTask() {
     await chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon128.png',
-        title: 'Amazon Rufus信息抓取',
+        title: 'Amazon Alexa for Shopping 信息抓取',
         message: `抓取完成！成功: ${queueState.stats.success}, 失败: ${queueState.stats.failed}`
     });
 }
@@ -1137,7 +1145,7 @@ async function restoreQueueState(urls, config) {
 
 // 启动抓取
 async function startScraping(urls, config, isNewTask = false) {
-    console.log('[startScraping] 启动Rufus抓取任务，URL数量:', urls.length, '是否新任务:', isNewTask);
+    console.log('[startScraping] 启动 Alexa for Shopping 抓取任务，URL数量:', urls.length, '是否新任务:', isNewTask);
     queueState.config = config;
     queueState.isRunning = true;
     queueState.isPaused = false;
@@ -1302,5 +1310,5 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // 安装时初始化
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('Amazon Rufus Scraper extension installed');
+    console.log('alexai extension installed');
 });

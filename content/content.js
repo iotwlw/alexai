@@ -1,4 +1,4 @@
-// Content Script - Amazon商品页 Rufus 信息增强
+// Content Script - Amazon商品页 Alexa for Shopping 信息增强
 
 (function() {
     'use strict';
@@ -11,7 +11,7 @@
         return;
     }
 
-    console.log('Amazon Rufus Scraper - Content script loaded');
+    console.log('alexai - Content script loaded');
 
     function cleanText(value) {
         return String(value || '')
@@ -19,6 +19,8 @@
             .replace(/\s+/g, ' ')
             .trim();
     }
+
+    const assistantTextPattern = /Ask\s+Rufus|Rufus|Alexa\s+for\s+Shopping|Ask\s+Alexa/i;
 
     function extractAsin() {
         const inputAsin = document.querySelector('#ASIN, input[name="ASIN"]')?.value;
@@ -36,6 +38,8 @@
         if (!normalized || normalized.length > 140) return false;
         if (/^Ask\s+Rufus$/i.test(normalized)) return false;
         if (/Ask\s+Rufus/i.test(normalized)) return false;
+        if (/^Alexa\s+for\s+Shopping$/i.test(normalized)) return false;
+        if (/^Ask\s+Alexa$/i.test(normalized)) return false;
         if ((normalized.match(/\?/g) || []).length > 1) return false;
 
         const lower = normalized.toLowerCase();
@@ -83,7 +87,7 @@
 
     function extractRufusPrompts() {
         const candidates = Array.from(document.querySelectorAll(
-            '#dpx-nice-widget-container [data-dpx-rufus-connect], #dpx-nice-widget-container .small-widget-pill, #dpx-nice-widget-container .ask-pill, [data-rufus-action], [id*="rufus" i], [class*="rufus" i], [aria-label*="rufus" i], button, a, [role="button"], .a-button-text'
+            '#dpx-nice-widget-container [data-dpx-rufus-connect], #dpx-nice-widget-container .small-widget-pill, #dpx-nice-widget-container .ask-pill, [data-rufus-action], [id*="rufus" i], [class*="rufus" i], [aria-label*="rufus" i], [id*="alexa-shopping" i], [class*="alexa-shopping" i], [aria-label*="Alexa for Shopping" i], button, a, [role="button"], .a-button-text'
         ));
         const prompts = [];
         const seen = new Set();
@@ -109,7 +113,7 @@
             .split('\n')
             .map(cleanText)
             .filter(Boolean);
-        const askRufusIndex = lines.findIndex(line => /Ask\s+Rufus/i.test(line));
+        const askRufusIndex = lines.findIndex(line => assistantTextPattern.test(line));
         if (askRufusIndex >= 0) {
             for (const line of lines.slice(askRufusIndex + 1, askRufusIndex + 24)) {
                 add(line);
@@ -180,8 +184,8 @@
             productTitle: title,
             priceInsightLabel: priceInsight.priceInsightLabel,
             highPriceDetected: priceInsight.highPriceDetected,
-            rufusTitle: prompts.length ? 'Ask Rufus' : '',
-            rufusFound: prompts.length > 0 || /Ask\s+Rufus/i.test(document.body?.innerText || ''),
+            rufusTitle: prompts.length ? 'Alexa for Shopping' : '',
+            rufusFound: prompts.length > 0 || assistantTextPattern.test(document.body?.innerText || ''),
             rufusPrompts: prompts,
             rufusQuestions: prompts.filter(prompt => prompt.endsWith('?')),
             rufusActions: prompts.filter(prompt => !prompt.endsWith('?')),
@@ -209,7 +213,7 @@
             opacity: 0.9;
             transition: opacity 0.3s;
         `;
-        indicator.textContent = 'Amazon Rufus Scraper Ready';
+        indicator.textContent = 'alexai Ready';
 
         document.body.appendChild(indicator);
 
