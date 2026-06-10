@@ -46,6 +46,14 @@
                     <input type="number" id="delayMax" value="5" min="1" max="60">
                 </div>
                 <div class="setting-item">
+                    <label for="minConcurrentWindows">最小窗口</label>
+                    <input type="number" id="minConcurrentWindows" value="2" min="2" max="5">
+                </div>
+                <div class="setting-item">
+                    <label for="maxConcurrentWindows">最大窗口</label>
+                    <input type="number" id="maxConcurrentWindows" value="5" min="2" max="5">
+                </div>
+                <div class="setting-item">
                     <label for="batchSize">批次大小</label>
                     <input type="number" id="batchSize" value="25" min="5" max="100" title="实际批次大小将在此值基础上 ±20% 随机">
                 </div>
@@ -95,6 +103,10 @@
                 <div class="stat-item pending">
                     <div class="stat-label">待处理</div>
                     <div id="statPending" class="stat-value">0</div>
+                </div>
+                <div class="stat-item active">
+                    <div class="stat-label">窗口</div>
+                    <div id="statActive" class="stat-value">0</div>
                 </div>
             </div>
             <div class="status-message">

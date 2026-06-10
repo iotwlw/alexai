@@ -5,7 +5,7 @@
 ## 当前目标
 
 - 输入 Amazon 商品页 URL 或 ASIN
-- 自动打开商品页并等待动态内容加载
+- 自动维持 2-5 个后台窗口动态并发抓取
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
 - 提取 Rufus 区块中的 5 个推荐问题/提示
 - 导出 CSV/JSON
@@ -15,7 +15,7 @@
 | 文件 | 职责 |
 |------|------|
 | `manifest.json` | 扩展配置、权限、商品页 content script 匹配规则 |
-| `background/background.js` | 队列调度、标签页创建、动态等待、Rufus 数据提取 |
+| `background/background.js` | 动态并发队列调度、标签页创建、早停提取、Rufus 数据提取 |
 | `content/content.js` | 商品页指示器、页面内备用提取函数 |
 | `popup/popup.html` | 弹窗界面 |
 | `popup/popup.js` | URL/ASIN 导入、配置、进度、CSV/JSON 导出 |
@@ -78,5 +78,5 @@ https://www.amazon.com/dp/B0D2R3KRFN?th=1
 ## 注意
 
 - Ask Rufus 是 Amazon 动态/个性化模块，页面不展示时 `问题1` 到 `问题5` 会留空。
-- 不要把抓取频率调得太高，保留随机延迟和批次休息。
-- 扩展打开后台标签页进行抓取，处理完会自动关闭。
+- 不要把抓取频率调得太高，保留随机窗口补位延迟和批次休息。
+- 扩展打开后台标签页进行抓取，提取到可用信息后会立即关闭，不等待页面完全加载。

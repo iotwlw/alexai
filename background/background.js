@@ -3,7 +3,7 @@
 // 队列状态
 const queueState = {
     pending: [],      // 待处理URL
-    processing: null, // 当前处理的URL
+    processing: [],   // 当前处理中的URL
     completed: [],    // 已完成
     failed: [],       // 失败列表
     data: [],         // 抓取的数据
@@ -44,9 +44,102 @@ function stopKeepAlive() {
 // 重试计数器
 const retryCount = new Map();
 
+const MIN_CONCURRENT_WINDOWS = 2;
+const MAX_CONCURRENT_WINDOWS = 5;
+const DEFAULT_MIN_CONCURRENT_WINDOWS = 2;
+const DEFAULT_MAX_CONCURRENT_WINDOWS = 5;
+const EXTRACTION_TIMEOUT_MS = 22000;
+const EXTRACTION_POLL_INTERVAL_MS = 700;
+const NO_RUFUS_MIN_WAIT_MS = 6000;
+
+const activeTasks = new Map();
+const activeTabs = new Map();
+let schedulerPromise = null;
+let taskSequence = 0;
+let desiredWindowCount = 0;
+let nextLaunchAt = 0;
+let restUntil = 0;
+let processedSinceRest = 0;
+
 // 随机延迟函数
 function randomDelay(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    const rawMin = Number.isFinite(Number(min)) ? Number(min) : 0;
+    const rawMax = Number.isFinite(Number(max)) ? Number(max) : rawMin;
+    const lower = Math.max(0, Math.min(rawMin, rawMax));
+    const upper = Math.max(lower, Math.max(rawMin, rawMax));
+    return Math.floor(Math.random() * (upper - lower + 1)) + lower;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function clampNumber(value, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return min;
+    return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function getConcurrencyConfig() {
+    const minRaw = queueState.config.minConcurrentWindows ?? DEFAULT_MIN_CONCURRENT_WINDOWS;
+    const maxRaw = queueState.config.maxConcurrentWindows ?? DEFAULT_MAX_CONCURRENT_WINDOWS;
+    const clampedMin = clampNumber(minRaw, MIN_CONCURRENT_WINDOWS, MAX_CONCURRENT_WINDOWS);
+    const clampedMax = clampNumber(maxRaw, MIN_CONCURRENT_WINDOWS, MAX_CONCURRENT_WINDOWS);
+
+    return {
+        min: Math.min(clampedMin, clampedMax),
+        max: Math.max(clampedMin, clampedMax)
+    };
+}
+
+function refreshDesiredWindowCount() {
+    const { min, max } = getConcurrencyConfig();
+    const availableWork = queueState.pending.length + activeTasks.size;
+    desiredWindowCount = availableWork > 0
+        ? Math.min(randomDelay(min, max), availableWork)
+        : 0;
+    return desiredWindowCount;
+}
+
+function getLaunchDelay() {
+    return randomDelay(queueState.config.delayMin ?? 2000, queueState.config.delayMax ?? 5000);
+}
+
+function scheduleNextLaunch() {
+    nextLaunchAt = Date.now() + getLaunchDelay();
+}
+
+function getRandomizedRestTime() {
+    const baseRestTime = queueState.config.restTime || 60000;
+    const variance = baseRestTime * 0.2;
+    return Math.round(baseRestTime + (Math.random() * 2 - 1) * variance);
+}
+
+function maybeStartBatchRest() {
+    const batchSize = queueState.config.batchSize || 25;
+    if (batchSize <= 0 || processedSinceRest < batchSize || queueState.pending.length === 0) {
+        return 0;
+    }
+
+    const restTime = getRandomizedRestTime();
+    restUntil = Date.now() + restTime;
+    processedSinceRest = 0;
+    return restTime;
+}
+
+function removeProcessingUrl(url) {
+    const index = queueState.processing.indexOf(url);
+    if (index >= 0) {
+        queueState.processing.splice(index, 1);
+    }
+}
+
+async function closeTabIfOpen(tabId) {
+    try {
+        await chrome.tabs.remove(tabId);
+    } catch (_) {
+        // Tab may already be closed.
+    }
 }
 
 // 防检测：模拟人类行为
@@ -89,57 +182,112 @@ function extractAsinFromUrl(url) {
     }
 }
 
-// 等待商品页动态模块完成首轮渲染
-async function waitForProductContent(tabId) {
-    for (let attempt = 0; attempt < 10; attempt++) {
+function getPromptCount(data) {
+    return [
+        data?.rufusPrompts,
+        data?.rufusQuestions,
+        data?.rufusActions
+    ].reduce((count, values) => count + (Array.isArray(values) ? values.length : 0), 0);
+}
+
+function hasRufusData(data) {
+    return getPromptCount(data) > 0;
+}
+
+function hasRufusSignal(data) {
+    return Boolean(data?.rufusFound);
+}
+
+function hasUsefulProductContext(data) {
+    const title = String(data?.productTitle || '').trim();
+    const genericTitle = /^(amazon|amazon\.[a-z.]+)$/i.test(title);
+    const blockedTitle = /robot check|captcha|sorry/i.test(title);
+
+    return Boolean(
+        (title && !genericTitle && !blockedTitle) ||
+        data?.brand ||
+        data?.rating ||
+        data?.reviewCount ||
+        data?.priceInsightLabel
+    );
+}
+
+function hasMinimumExtractedData(data) {
+    return hasRufusData(data) || hasRufusSignal(data) || hasUsefulProductContext(data);
+}
+
+function isExtractedDataReady(data, elapsedMs) {
+    if (!data) return false;
+    if (hasRufusData(data)) return true;
+    return elapsedMs >= NO_RUFUS_MIN_WAIT_MS &&
+        (hasRufusSignal(data) || hasUsefulProductContext(data));
+}
+
+async function scrollTab(tabId) {
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => window.scrollBy({ top: 350, behavior: 'smooth' })
+        });
+    } catch (_) {
+        // Ignore scroll failures while the page is still navigating.
+    }
+}
+
+// 打开后不等待页面 complete；轮询到可用数据后立即返回，由 finally 关闭 tab。
+async function extractWhenAvailable(tabId) {
+    const startedAt = Date.now();
+    let lastData = null;
+    let lastError = null;
+    let simulatedBehavior = false;
+    let firstScrollDone = false;
+    let secondScrollDone = false;
+
+    while (Date.now() - startedAt < EXTRACTION_TIMEOUT_MS) {
+        if (!queueState.isRunning && !queueState.isPaused) {
+            throw new Error('Task stopped');
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+
         try {
             const results = await chrome.scripting.executeScript({
                 target: { tabId },
-                func: () => {
-                    const bodyText = document.body?.innerText || '';
-                    const hasProductTitle = Boolean(document.querySelector('#productTitle'));
-                    const hasRufusText = /Ask\s+Rufus|Rufus/i.test(bodyText);
-                    const hasSmidgetRufus = Boolean(document.querySelector(
-                        '#dpx-nice-widget-container .small-widget-pill, #dpx-nice-widget-container [data-dpx-rufus-connect]'
-                    ));
-                    let hasRufusAttrs = false;
-
-                    try {
-                        hasRufusAttrs = Boolean(document.querySelector(
-                            '[id*="rufus" i], [class*="rufus" i], [aria-label*="rufus" i], [data-csa-c-content-id*="rufus" i], [data-csa-c-slot-id*="rufus" i]'
-                        ));
-                    } catch (_) {
-                        hasRufusAttrs = false;
-                    }
-
-                    return {
-                        hasProductTitle,
-                        hasRufus: hasSmidgetRufus || hasRufusText || hasRufusAttrs
-                    };
-                }
+                func: extractProductRufusData
             });
+            const data = results?.[0]?.result;
 
-            const state = results?.[0]?.result;
-            if (state?.hasRufus || (attempt >= 5 && state?.hasProductTitle)) {
-                return;
+            if (data) {
+                lastData = data;
+                if (isExtractedDataReady(data, elapsedMs)) {
+                    return data;
+                }
             }
         } catch (error) {
-            console.error('Waiting for product content failed:', error);
+            lastError = error;
         }
 
-        if (attempt === 3 || attempt === 6) {
-            try {
-                await chrome.scripting.executeScript({
-                    target: { tabId },
-                    func: () => window.scrollBy({ top: 350, behavior: 'smooth' })
-                });
-            } catch (_) {
-                // Ignore scroll failures while waiting.
-            }
+        if (!simulatedBehavior && elapsedMs >= 1200) {
+            simulatedBehavior = true;
+            await simulateHumanBehavior(tabId);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!firstScrollDone && elapsedMs >= 3500) {
+            firstScrollDone = true;
+            await scrollTab(tabId);
+        } else if (!secondScrollDone && elapsedMs >= 7000) {
+            secondScrollDone = true;
+            await scrollTab(tabId);
+        }
+
+        await sleep(EXTRACTION_POLL_INTERVAL_MS);
     }
+
+    if (lastData && hasMinimumExtractedData(lastData)) {
+        return lastData;
+    }
+
+    throw new Error(lastError?.message || 'No valid data found before timeout');
 }
 
 // 处理单个URL
@@ -150,95 +298,59 @@ async function processUrl(url) {
         throw new Error('Invalid product URL or ASIN');
     }
 
-    // 创建新标签页
-    const tab = await chrome.tabs.create({
-        url: url,
-        active: false
-    });
+    const maxAttempts = queueState.config.enableRetry
+        ? (queueState.config.retryLimit || 3) + 1
+        : 1;
+    let lastError = null;
 
-    try {
-        // 等待页面加载
-        await waitForTabLoad(tab.id);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        let tab = null;
 
-        // 防检测延迟
-        const delay = randomDelay(
-            queueState.config.delayMin,
-            queueState.config.delayMax
-        );
-        await new Promise(resolve => setTimeout(resolve, delay));
+        try {
+            if (!queueState.isRunning && !queueState.isPaused) {
+                throw new Error('Task stopped');
+            }
 
-        // 模拟人类行为
-        await simulateHumanBehavior(tab.id);
+            tab = await chrome.tabs.create({
+                url,
+                active: false
+            });
+            activeTabs.set(tab.id, url);
 
-        // 等待商品页动态内容（Ask Rufus 可能异步加载）
-        await waitForProductContent(tab.id);
+            const data = await extractWhenAvailable(tab.id);
 
-        // 注入content script并获取数据
-        const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: extractProductRufusData
-        });
-
-        if (results && results[0] && results[0].result) {
-            const data = results[0].result;
-
-            // 验证数据完整性
-            if (!data.asin && !data.productTitle && !data.rufusFound) {
+            if (!hasMinimumExtractedData(data)) {
                 throw new Error('No valid data found');
             }
 
-            // 添加额外信息
             data.url = url;
             data.asin = data.asin || asin;
             data.scrapedAt = new Date().toISOString();
 
+            retryCount.delete(url);
             return { success: true, data };
-        } else {
-            throw new Error('Failed to extract data');
-        }
-    } catch (error) {
-        console.error('Error processing URL:', url, error);
+        } catch (error) {
+            lastError = error;
+            console.error('Error processing URL:', url, error);
 
-        // 重试逻辑
-        if (queueState.config.enableRetry) {
-            const currentRetry = retryCount.get(url) || 0;
-            if (currentRetry < queueState.config.retryLimit) {
-                retryCount.set(url, currentRetry + 1);
-                await new Promise(resolve => setTimeout(resolve, randomDelay(5000, 10000)));
-                return processUrl(url); // 递归重试
+            const canRetry = queueState.config.enableRetry &&
+                attempt < maxAttempts - 1 &&
+                (queueState.isRunning || queueState.isPaused);
+
+            if (canRetry) {
+                retryCount.set(url, attempt + 1);
+                await sleep(randomDelay(5000, 10000));
+            }
+        } finally {
+            if (tab?.id) {
+                activeTabs.delete(tab.id);
+                await closeTabIfOpen(tab.id);
             }
         }
-
-        return { success: false, error: error.message, url };
-    } finally {
-        // 关闭标签页
-        try {
-            await chrome.tabs.remove(tab.id);
-        } catch (e) {
-            // Tab might already be closed
-        }
-        retryCount.delete(url);
     }
-}
 
-// 等待标签页加载完成
-function waitForTabLoad(tabId) {
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            chrome.tabs.onUpdated.removeListener(listener);
-            reject(new Error('Page load timeout'));
-        }, 30000); // 30秒超时
-
-        const listener = (updatedTabId, changeInfo) => {
-            if (updatedTabId === tabId && changeInfo.status === 'complete') {
-                clearTimeout(timeout);
-                chrome.tabs.onUpdated.removeListener(listener);
-                resolve();
-            }
-        };
-
-        chrome.tabs.onUpdated.addListener(listener);
-    });
+    retryCount.delete(url);
+    return { success: false, error: lastError?.message || 'Failed to extract data', url };
 }
 
 // 在页面中执行的函数（提取商品页 Ask Rufus 数据）
@@ -737,89 +849,159 @@ function extractProductRufusData() {
     }
 }
 
-// 处理一批URL
-async function processBatch() {
-    console.log('[processBatch] 开始处理批次，运行状态:', queueState.isRunning, '暂停状态:', queueState.isPaused);
+function getProgressPendingCount() {
+    return Math.max(0, queueState.stats.total - queueState.stats.success - queueState.stats.failed);
+}
 
-    if (!queueState.isRunning || queueState.isPaused) {
-        console.log('[processBatch] 任务未运行或已暂停，退出');
-        return;
+function getWindowStatus(prefix = '运行中') {
+    const target = desiredWindowCount || refreshDesiredWindowCount();
+    return `${prefix}: ${activeTasks.size}/${target} 个窗口，待处理 ${queueState.pending.length}`;
+}
+
+function startQueueScheduler() {
+    if (!schedulerPromise) {
+        schedulerPromise = runQueueScheduler()
+            .catch(error => console.error('[scheduler] 调度异常:', error))
+            .finally(() => {
+                schedulerPromise = null;
+            });
     }
 
-    if (queueState.pending.length === 0) {
-        console.log('[processBatch] 所有任务完成');
-        // 所有任务完成
-        await completeTask();
-        return;
+    return schedulerPromise;
+}
+
+async function runQueueScheduler() {
+    console.log('[scheduler] 启动动态并发调度，运行状态:', queueState.isRunning, '暂停状态:', queueState.isPaused);
+
+    if (!desiredWindowCount) {
+        refreshDesiredWindowCount();
     }
 
-    // 取出一批URL（在基准值基础上 ±20% 随机调整）
-    const baseBatchSize = queueState.config.batchSize || 25;
-    const batchVariance = Math.round(baseBatchSize * 0.2);
-    const actualBatchSize = Math.max(1, baseBatchSize + Math.round((Math.random() * 2 - 1) * batchVariance));
-    const batch = queueState.pending.splice(0, Math.min(actualBatchSize, queueState.pending.length));
-    console.log('[processBatch] 取出批次:', batch.length, '个URL（基准:', baseBatchSize, '，实际:', actualBatchSize, '），剩余:', queueState.pending.length);
-
-    for (const url of batch) {
-        if (!queueState.isRunning || queueState.isPaused) {
-            console.log('[processBatch] 检测到暂停或停止信号，将URL放回队列');
-            // 如果暂停或停止，将剩余URL放回队列
-            queueState.pending.unshift(url);
+    while (queueState.isRunning) {
+        if (queueState.pending.length === 0 && activeTasks.size === 0) {
+            console.log('[scheduler] 所有任务完成');
+            await completeTask();
             return;
         }
 
-        queueState.processing = url;
-        console.log('[processBatch] 正在处理:', url);
+        if (queueState.isPaused) {
+            const status = activeTasks.size > 0
+                ? `任务已暂停，等待 ${activeTasks.size} 个窗口完成`
+                : '任务已暂停';
+            await sendProgressUpdate(status);
+            return;
+        }
 
-        // 发送进度更新
+        const now = Date.now();
+        if (restUntil > now) {
+            await sendProgressUpdate(`批次休息中 (${Math.ceil((restUntil - now) / 1000)}秒)...`);
+            await sleep(Math.min(1000, restUntil - now));
+            continue;
+        }
+
+        if (desiredWindowCount <= 0 && queueState.pending.length > 0) {
+            refreshDesiredWindowCount();
+        }
+
+        if (queueState.pending.length === 0 || activeTasks.size >= desiredWindowCount) {
+            await sleep(250);
+            continue;
+        }
+
+        if (nextLaunchAt > now) {
+            await sleep(Math.min(500, nextLaunchAt - now));
+            continue;
+        }
+
+        const immediateFill = activeTasks.size === 0 && nextLaunchAt === 0;
+        const launchCount = immediateFill
+            ? Math.max(1, desiredWindowCount - activeTasks.size)
+            : 1;
+
+        for (let index = 0; index < launchCount; index++) {
+            if (!queueState.isRunning || queueState.isPaused) break;
+            if (queueState.pending.length === 0 || activeTasks.size >= desiredWindowCount) break;
+
+            const url = queueState.pending.shift();
+            launchUrlTask(url);
+        }
+
+        if (!immediateFill && queueState.pending.length > 0 && activeTasks.size < desiredWindowCount) {
+            scheduleNextLaunch();
+        }
+
+        await saveProgress();
+        await sendProgressUpdate(getWindowStatus());
+        await sleep(100);
+    }
+}
+
+function launchUrlTask(url) {
+    const taskId = ++taskSequence;
+    queueState.processing.push(url);
+    activeTasks.set(taskId, { url });
+    console.log('[scheduler] 打开窗口:', url, '当前窗口:', activeTasks.size, '目标窗口:', desiredWindowCount);
+
+    handleUrlTask(taskId, url);
+}
+
+async function handleUrlTask(taskId, url) {
+    try {
         await sendProgressUpdate(`正在抓取: ${extractAsinFromUrl(url) || url}`);
+        const result = await processUrl(url);
 
-        try {
-            // 处理URL
-            const result = await processUrl(url);
+        if (!queueState.isRunning && !queueState.isPaused) {
+            return;
+        }
 
-            if (result.success) {
-                queueState.completed.push(url);
-                queueState.data.push(result.data);
-                queueState.stats.success++;
-                console.log('[processBatch] 成功:', url, '累计成功:', queueState.stats.success);
-            } else {
-                queueState.failed.push({ url, error: result.error });
-                queueState.stats.failed++;
-                console.log('[processBatch] 失败:', url, '错误:', result.error, '累计失败:', queueState.stats.failed);
-            }
-        } catch (error) {
-            console.error('[processBatch] 处理异常:', url, error);
+        if (result.success) {
+            queueState.completed.push(url);
+            queueState.data.push(result.data);
+            queueState.stats.success++;
+            console.log('[scheduler] 成功:', url, '累计成功:', queueState.stats.success);
+        } else {
+            queueState.failed.push({ url, error: result.error });
+            queueState.stats.failed++;
+            console.log('[scheduler] 失败:', url, '错误:', result.error, '累计失败:', queueState.stats.failed);
+        }
+    } catch (error) {
+        if (queueState.isRunning || queueState.isPaused) {
+            console.error('[scheduler] 处理异常:', url, error);
             queueState.failed.push({ url, error: error.message });
             queueState.stats.failed++;
         }
+    } finally {
+        activeTasks.delete(taskId);
+        removeProcessingUrl(url);
+
+        if (!queueState.isRunning && !queueState.isPaused) {
+            return;
+        }
 
         queueState.stats.processed++;
-        queueState.processing = null;
+        processedSinceRest++;
 
-        // 保存进度
+        refreshDesiredWindowCount();
+        const restTime = maybeStartBatchRest();
+        if (restTime > 0) {
+            console.log('[scheduler] 批次休息，实际:', Math.round(restTime / 1000), '秒');
+        } else if (queueState.pending.length > 0) {
+            scheduleNextLaunch();
+        }
+
         await saveProgress();
+        await sendProgressUpdate(restTime > 0
+            ? `批次休息中 (${Math.round(restTime / 1000)}秒)...`
+            : getWindowStatus());
 
-        // 发送更新
-        await sendProgressUpdate();
-    }
+        if (queueState.pending.length === 0 && activeTasks.size === 0 && queueState.isRunning) {
+            await completeTask();
+            return;
+        }
 
-    // 批次间休息
-    if (queueState.pending.length > 0 && queueState.isRunning && !queueState.isPaused) {
-        // 基于基准值进行 ±20% 的随机调整
-        const baseRestTime = queueState.config.restTime || 60000;
-        const variance = baseRestTime * 0.2; // 20% 的波动范围
-        const restTime = Math.round(baseRestTime + (Math.random() * 2 - 1) * variance);
-
-        console.log('[processBatch] 批次休息中，剩余任务:', queueState.pending.length, '基准:', Math.round(baseRestTime / 1000), '秒，实际:', Math.round(restTime / 1000), '秒');
-        await sendProgressUpdate(`批次休息中 (${Math.round(restTime / 1000)}秒)...`);
-        await new Promise(resolve => setTimeout(resolve, restTime));
-
-        // 继续处理下一批
-        console.log('[processBatch] 休息结束，继续处理下一批');
-        await processBatch();
-    } else if (queueState.pending.length === 0) {
-        await completeTask();
+        if (queueState.isRunning && !queueState.isPaused) {
+            startQueueScheduler();
+        }
     }
 }
 
@@ -828,6 +1010,10 @@ async function completeTask() {
     console.log('[completeTask] 任务完成，成功:', queueState.stats.success, '失败:', queueState.stats.failed);
     queueState.isRunning = false;
     queueState.isPaused = false;
+    desiredWindowCount = 0;
+    nextLaunchAt = 0;
+    restUntil = 0;
+    processedSinceRest = 0;
 
     // 停止保活机制
     stopKeepAlive();
@@ -846,8 +1032,11 @@ async function completeTask() {
 
     // 清空内存中的队列状态
     queueState.pending = [];
+    queueState.processing = [];
     queueState.completed = [];
     queueState.failed = [];
+    activeTasks.clear();
+    activeTabs.clear();
 
     // 发送完成消息
     try {
@@ -876,7 +1065,10 @@ async function sendProgressUpdate(status) {
                 total: queueState.stats.total,
                 success: queueState.stats.success,
                 failed: queueState.stats.failed,
-                pending: queueState.pending.length
+                processed: queueState.stats.processed,
+                pending: getProgressPendingCount(),
+                active: activeTasks.size,
+                targetWindows: desiredWindowCount
             },
             data: queueState.data,
             status: status
@@ -949,6 +1141,11 @@ async function startScraping(urls, config, isNewTask = false) {
     queueState.config = config;
     queueState.isRunning = true;
     queueState.isPaused = false;
+    queueState.processing = [];
+    activeTasks.clear();
+    activeTabs.clear();
+    nextLaunchAt = 0;
+    restUntil = 0;
 
     // 启动保活机制，防止 Service Worker 被挂起
     startKeepAlive();
@@ -978,10 +1175,14 @@ async function startScraping(urls, config, isNewTask = false) {
             failed: 0,
             processed: 0
         };
+        processedSinceRest = 0;
         console.log('[startScraping] 初始化新队列');
     } else {
+        processedSinceRest = (queueState.stats.processed || 0) % (queueState.config.batchSize || 25);
         console.log('[startScraping] 恢复已有队列，剩余:', queueState.pending.length);
     }
+
+    refreshDesiredWindowCount();
 
     // 保存初始状态
     await chrome.storage.local.set({
@@ -990,30 +1191,47 @@ async function startScraping(urls, config, isNewTask = false) {
     });
 
     // 开始处理
-    await processBatch();
+    startQueueScheduler();
+    await sendProgressUpdate(getWindowStatus('已启动'));
 }
 
 // 暂停抓取
 async function pauseScraping() {
     queueState.isPaused = true;
     await chrome.storage.local.set({ scraperPaused: true });
+    await sendProgressUpdate(activeTasks.size > 0
+        ? `任务已暂停，等待 ${activeTasks.size} 个窗口完成`
+        : '任务已暂停');
 }
 
 // 继续抓取
 async function resumeScraping() {
     queueState.isPaused = false;
     await chrome.storage.local.set({ scraperPaused: false });
-    await processBatch();
+    refreshDesiredWindowCount();
+    startQueueScheduler();
+    await sendProgressUpdate(getWindowStatus('已继续'));
 }
 
 // 停止抓取
 async function stopScraping() {
     console.log('[stopScraping] 停止抓取任务');
+    const interruptedUrls = [...queueState.processing];
+    queueState.pending = [...interruptedUrls, ...queueState.pending];
+    queueState.processing = [];
     queueState.isRunning = false;
     queueState.isPaused = false;
+    desiredWindowCount = 0;
+    nextLaunchAt = 0;
+    restUntil = 0;
 
     // 停止保活机制
     stopKeepAlive();
+
+    const tabIds = Array.from(activeTabs.keys());
+    activeTasks.clear();
+    activeTabs.clear();
+    await Promise.all(tabIds.map(tabId => closeTabIfOpen(tabId)));
 
     // 保存队列状态以便下次继续
     await chrome.storage.local.set({

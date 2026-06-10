@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本项目是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 `Ask Rufus` 模块信息。用户可以导入商品 URL 或 ASIN，扩展按队列打开页面，等待动态内容加载，提取 Rufus 区块中的 5 个推荐问题/提示并导出为 CSV/JSON。
+本项目是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页中的 `Ask Rufus` 模块信息。用户可以导入商品 URL 或 ASIN，扩展按队列动态打开 2-5 个后台窗口，提取 Rufus 区块中的 5 个推荐问题/提示并导出为 CSV/JSON。
 
 ## 需求
 
@@ -11,7 +11,7 @@
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
 - 提取价格标识：例如 Amazon `High price`
 - 提取 Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
-- 保留批量队列、暂停/继续、停止、断点续传、失败重试
+- 保留动态并发队列、暂停/继续、停止、断点续传、失败重试
 - 自动导出 CSV，支持手动导出 JSON
 
 ## 架构
@@ -28,12 +28,13 @@
 1. 用户在 Popup 中输入 URL/ASIN
 2. `popup.js` 标准化为 Amazon 商品 URL
 3. 用户点击开始，Popup 向 Background 发送 `start`
-4. Background 创建后台标签页
-5. 页面加载完成后等待商品/Rufus 动态内容
-6. Background 注入 `extractProductRufusData()`
-7. 结果写入队列数据并保存到 `chrome.storage.local`
-8. Popup 接收进度消息并刷新 UI
-9. 任务完成后自动导出 CSV
+4. Background 抽取 2-5 个目标并发窗口数并创建后台标签页
+5. Background 不等待页面 `complete`，而是轮询注入 `extractProductRufusData()`
+6. 单页提取到 Rufus 或商品上下文后立即关闭当前窗口
+7. 调度器按随机延迟补充新窗口，并在 2-5 范围内动态调整目标并发
+8. 结果写入队列数据并保存到 `chrome.storage.local`
+9. Popup 接收进度消息并刷新 UI
+10. 任务完成后自动导出 CSV
 
 ## 导出字段
 
@@ -59,4 +60,4 @@
 - Ask Rufus 是动态/个性化模块，不是每个用户、地区、商品都展示。
 - Amazon DOM 可能调整，提取逻辑需要通过多选择器和文本回退保持弹性。
 - 已按 `example/Lightdot 4Pack 200W LED Wall Pack Lights.html` 校准真实 Rufus 结构：`#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`。
-- 过高频率可能触发验证或限制，应保留随机延迟和批次休息。
+- 过高频率可能触发验证或限制，应保留随机补位延迟和批次休息。

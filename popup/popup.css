@@ -240,7 +240,7 @@ body {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 6px;
     margin-bottom: 8px;
 }
@@ -268,6 +268,11 @@ body {
     background: rgba(245, 158, 11, 0.1);
 }
 
+.stat-item.active {
+    border-color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.1);
+}
+
 .stat-label {
     font-size: 10px;
     color: var(--text-secondary);
@@ -292,6 +297,10 @@ body {
     color: var(--warning-color);
 }
 
+.stat-item.active .stat-value {
+    color: var(--primary-color);
+}
+
 .status-message {
     padding: 6px 8px;
     background: var(--bg-color);
@@ -311,6 +320,8 @@ body {
     display: flex;
     gap: 8px;
     margin-bottom: 0;
+    align-self: start;
+    align-items: flex-start;
 }
 
 /* Buttons */

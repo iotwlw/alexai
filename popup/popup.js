@@ -8,6 +8,8 @@ const state = {
     config: {
         delayMin: 2000,
         delayMax: 5000,
+        minConcurrentWindows: 2,
+        maxConcurrentWindows: 5,
         batchSize: 25,
         restTime: 60000,
         enableAntiDetection: true,
@@ -18,7 +20,8 @@ const state = {
         total: 0,
         success: 0,
         failed: 0,
-        pending: 0
+        pending: 0,
+        active: 0
     }
 };
 
@@ -31,6 +34,8 @@ const elements = {
     fileInput: document.getElementById('fileInput'),
     delayMin: document.getElementById('delayMin'),
     delayMax: document.getElementById('delayMax'),
+    minConcurrentWindows: document.getElementById('minConcurrentWindows'),
+    maxConcurrentWindows: document.getElementById('maxConcurrentWindows'),
     batchSize: document.getElementById('batchSize'),
     restTime: document.getElementById('restTime'),
     enableAntiDetection: document.getElementById('enableAntiDetection'),
@@ -41,6 +46,7 @@ const elements = {
     statSuccess: document.getElementById('statSuccess'),
     statFailed: document.getElementById('statFailed'),
     statPending: document.getElementById('statPending'),
+    statActive: document.getElementById('statActive'),
     statusMessage: document.getElementById('statusMessage'),
     startBtn: document.getElementById('startBtn'),
     pauseBtn: document.getElementById('pauseBtn'),
@@ -105,6 +111,8 @@ async function loadSavedState() {
         // Load config into UI
         elements.delayMin.value = state.config.delayMin / 1000;
         elements.delayMax.value = state.config.delayMax / 1000;
+        elements.minConcurrentWindows.value = state.config.minConcurrentWindows || 2;
+        elements.maxConcurrentWindows.value = state.config.maxConcurrentWindows || 5;
         elements.batchSize.value = state.config.batchSize;
         elements.restTime.value = state.config.restTime / 1000;
         elements.enableAntiDetection.checked = state.config.enableAntiDetection;
@@ -127,6 +135,8 @@ function bindEvents() {
     // Settings
     elements.delayMin.addEventListener('change', updateConfig);
     elements.delayMax.addEventListener('change', updateConfig);
+    elements.minConcurrentWindows.addEventListener('change', updateConfig);
+    elements.maxConcurrentWindows.addEventListener('change', updateConfig);
     elements.batchSize.addEventListener('change', updateConfig);
     elements.restTime.addEventListener('change', updateConfig);
     elements.enableAntiDetection.addEventListener('change', updateConfig);
@@ -219,6 +229,8 @@ function updateConfig() {
     state.config = {
         delayMin: parseInt(elements.delayMin.value) * 1000,
         delayMax: parseInt(elements.delayMax.value) * 1000,
+        minConcurrentWindows: parseInt(elements.minConcurrentWindows.value),
+        maxConcurrentWindows: parseInt(elements.maxConcurrentWindows.value),
         batchSize: parseInt(elements.batchSize.value),
         restTime: parseInt(elements.restTime.value) * 1000,
         enableAntiDetection: elements.enableAntiDetection.checked,
@@ -238,6 +250,15 @@ async function handleStart() {
     // Validate config
     if (state.config.delayMin >= state.config.delayMax) {
         showStatus('⚠️ 最大延迟必须大于最小延迟', 'error');
+        return;
+    }
+
+    if (
+        state.config.minConcurrentWindows < 2 ||
+        state.config.maxConcurrentWindows > 5 ||
+        state.config.minConcurrentWindows > state.config.maxConcurrentWindows
+    ) {
+        showStatus('⚠️ 并发窗口范围必须在 2-5，且最小值不能大于最大值', 'error');
         return;
     }
 
@@ -313,6 +334,7 @@ async function handleStop() {
         await chrome.runtime.sendMessage({ action: 'stop' });
         state.isRunning = false;
         state.isPaused = false;
+        state.stats.active = 0;
         showStatus('⏹️ 任务已停止', 'info');
         await saveState();
         updateUI();
@@ -457,7 +479,7 @@ async function handleClearData() {
     if (!confirm('确定要清空所有抓取数据吗？')) return;
 
     state.scrapedData = [];
-    state.stats = { total: 0, success: 0, failed: 0, pending: 0 };
+    state.stats = { total: 0, success: 0, failed: 0, pending: 0, active: 0 };
     await saveState();
     updateUI();
     showStatus('🗑️ 数据已清空', 'info');
@@ -499,11 +521,15 @@ function updateUI() {
     // Update stats
     state.stats.total = state.urls.length;
     state.stats.pending = state.urls.length - state.stats.success - state.stats.failed;
+    if (!state.isRunning) {
+        state.stats.active = 0;
+    }
 
     elements.statTotal.textContent = state.stats.total;
     elements.statSuccess.textContent = state.stats.success;
     elements.statFailed.textContent = state.stats.failed;
     elements.statPending.textContent = state.stats.pending;
+    elements.statActive.textContent = state.stats.active || 0;
     elements.dataCount.textContent = `已抓取数据: ${state.scrapedData.length} 条`;
 
     // Update progress
@@ -557,6 +583,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'taskComplete') {
         state.isRunning = false;
         state.isPaused = false;
+        state.stats.active = 0;
         updateUI();
         saveState();
         showStatus('🎉 抓取任务已完成！正在导出CSV...', 'success');
