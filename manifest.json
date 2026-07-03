@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Amazon Alexa for Shopping 信息抓取工具",
   "version": "1.0.0",
-  "description": "alexai：智能抓取Amazon商品页Alexa for Shopping提示信息，兼容Ask Rufus旧页面，支持批量URL、断点续传、数据导出",
+  "description": "alexai：抓取Amazon Alexa for Shopping信息，支持批量导出，并可下载商品图和商品视频",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -22,30 +22,14 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.amazon.ca/dp/*",
-        "https://www.amazon.ca/*/dp/*",
-        "https://www.amazon.ca/gp/product/*",
-        "https://www.amazon.com/dp/*",
-        "https://www.amazon.com/*/dp/*",
-        "https://www.amazon.com/gp/product/*",
-        "https://www.amazon.co.uk/dp/*",
-        "https://www.amazon.co.uk/*/dp/*",
-        "https://www.amazon.co.uk/gp/product/*",
-        "https://www.amazon.de/dp/*",
-        "https://www.amazon.de/*/dp/*",
-        "https://www.amazon.de/gp/product/*",
-        "https://www.amazon.fr/dp/*",
-        "https://www.amazon.fr/*/dp/*",
-        "https://www.amazon.fr/gp/product/*",
-        "https://www.amazon.it/dp/*",
-        "https://www.amazon.it/*/dp/*",
-        "https://www.amazon.it/gp/product/*",
-        "https://www.amazon.es/dp/*",
-        "https://www.amazon.es/*/dp/*",
-        "https://www.amazon.es/gp/product/*",
-        "https://www.amazon.co.jp/dp/*",
-        "https://www.amazon.co.jp/*/dp/*",
-        "https://www.amazon.co.jp/gp/product/*"
+        "https://www.amazon.ca/*",
+        "https://www.amazon.com/*",
+        "https://www.amazon.co.uk/*",
+        "https://www.amazon.de/*",
+        "https://www.amazon.fr/*",
+        "https://www.amazon.it/*",
+        "https://www.amazon.es/*",
+        "https://www.amazon.co.jp/*"
       ],
       "js": ["content/content.js"],
       "run_at": "document_idle"
@@ -56,7 +40,8 @@
     "tabs",
     "scripting",
     "activeTab",
-    "notifications"
+    "notifications",
+    "downloads"
   ],
   "host_permissions": [
     "https://www.amazon.ca/*",
@@ -66,7 +51,9 @@
     "https://www.amazon.fr/*",
     "https://www.amazon.it/*",
     "https://www.amazon.es/*",
-    "https://www.amazon.co.jp/*"
+    "https://www.amazon.co.jp/*",
+    "https://*.media-amazon.com/*",
+    "https://*.ssl-images-amazon.com/*"
   ],
   "web_accessible_resources": [
     {

@@ -1253,6 +1253,80 @@ async function stopScraping() {
     });
 }
 
+function isAmazonSender(sender) {
+    try {
+        const url = new URL(sender?.url || sender?.tab?.url || '');
+        return /^https?:$/.test(url.protocol) && /(?:^|\.)amazon\./i.test(url.hostname);
+    } catch (_) {
+        return false;
+    }
+}
+
+function isAllowedAmazonImageUrl(value) {
+    try {
+        const url = new URL(value);
+        const host = url.hostname.toLowerCase();
+        return /^https?:$/.test(url.protocol) &&
+            (
+                /(?:^|\.)media-amazon\.com$/.test(host) ||
+                /(?:^|\.)ssl-images-amazon\.com$/.test(host) ||
+                (host.includes('amazon.') && url.pathname.includes('/images/'))
+            );
+    } catch (_) {
+        return false;
+    }
+}
+
+function sanitizeDownloadFilename(filename) {
+    const value = String(filename || '')
+        .replace(/\\/g, '/')
+        .split('/')
+        .map(part => part
+            .replace(/[<>:"|?*\x00-\x1F]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\.+$/g, '')
+            .trim()
+            .slice(0, 120))
+        .filter(Boolean)
+        .join('/');
+
+    return value || `amazon-images/amazon-image-${Date.now()}.jpg`;
+}
+
+function chromeDownload(options) {
+    return new Promise((resolve, reject) => {
+        chrome.downloads.download(options, downloadId => {
+            const error = chrome.runtime.lastError;
+            if (error) {
+                reject(new Error(error.message));
+                return;
+            }
+
+            resolve(downloadId);
+        });
+    });
+}
+
+async function downloadAmazonImage(message, sender) {
+    if (!isAmazonSender(sender)) {
+        throw new Error('Downloads are only accepted from Amazon pages');
+    }
+
+    if (!isAllowedAmazonImageUrl(message.imageUrl)) {
+        throw new Error('Not an Amazon image URL');
+    }
+
+    const filename = sanitizeDownloadFilename(message.filename);
+    const downloadId = await chromeDownload({
+        url: message.imageUrl,
+        filename,
+        conflictAction: 'uniquify',
+        saveAs: false
+    });
+
+    return { success: true, downloadId, filename };
+}
+
 // 消息监听
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.action) {
@@ -1286,6 +1360,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 paused: queueState.isPaused
             });
             break;
+
+        case 'downloadAmazonImage':
+            downloadAmazonImage(message, sender)
+                .then(result => sendResponse(result))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
 
         default:
             sendResponse({ success: false, error: 'Unknown action' });

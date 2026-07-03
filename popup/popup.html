@@ -72,6 +72,19 @@
                     <span title="失败后最多重试3次">自动重试</span>
                 </label>
             </div>
+            <div class="image-download-settings">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="imageDownloadDetectionEnabled" checked>
+                    <span title="关闭后不再检测页面图片/视频，也不显示DL、XL、VID按钮">图片检测</span>
+                </label>
+                <div class="setting-item compact-setting">
+                    <label for="imageDownloadDisplayMode">按钮显示</label>
+                    <select id="imageDownloadDisplayMode">
+                        <option value="visible">直接显示</option>
+                        <option value="hidden">不显示</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
         <!-- Progress Section -->

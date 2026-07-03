@@ -16,6 +16,10 @@ const state = {
         enableRetry: true,
         retryLimit: 3
     },
+    imageDownloadSettings: {
+        detectionEnabled: true,
+        displayMode: 'visible'
+    },
     stats: {
         total: 0,
         success: 0,
@@ -40,6 +44,8 @@ const elements = {
     restTime: document.getElementById('restTime'),
     enableAntiDetection: document.getElementById('enableAntiDetection'),
     enableRetry: document.getElementById('enableRetry'),
+    imageDownloadDetectionEnabled: document.getElementById('imageDownloadDetectionEnabled'),
+    imageDownloadDisplayMode: document.getElementById('imageDownloadDisplayMode'),
     progressBar: document.getElementById('progressBar'),
     progressPercent: document.getElementById('progressPercent'),
     statTotal: document.getElementById('statTotal'),
@@ -76,7 +82,8 @@ async function loadSavedState() {
             'scraperConfig',
             'scraperStats',
             'scraperRunning',
-            'scraperPaused'
+            'scraperPaused',
+            'imageDownloadSettings'
         ]);
 
         if (result.scraperUrls) {
@@ -108,6 +115,10 @@ async function loadSavedState() {
             state.isPaused = result.scraperPaused;
         }
 
+        if (result.imageDownloadSettings) {
+            Object.assign(state.imageDownloadSettings, normalizeImageDownloadSettings(result.imageDownloadSettings));
+        }
+
         // Load config into UI
         elements.delayMin.value = state.config.delayMin / 1000;
         elements.delayMax.value = state.config.delayMax / 1000;
@@ -117,6 +128,8 @@ async function loadSavedState() {
         elements.restTime.value = state.config.restTime / 1000;
         elements.enableAntiDetection.checked = state.config.enableAntiDetection;
         elements.enableRetry.checked = state.config.enableRetry;
+        elements.imageDownloadDetectionEnabled.checked = state.imageDownloadSettings.detectionEnabled;
+        elements.imageDownloadDisplayMode.value = state.imageDownloadSettings.displayMode;
 
         updateUI();
     } catch (error) {
@@ -141,6 +154,8 @@ function bindEvents() {
     elements.restTime.addEventListener('change', updateConfig);
     elements.enableAntiDetection.addEventListener('change', updateConfig);
     elements.enableRetry.addEventListener('change', updateConfig);
+    elements.imageDownloadDetectionEnabled.addEventListener('change', updateImageDownloadSettings);
+    elements.imageDownloadDisplayMode.addEventListener('change', updateImageDownloadSettings);
 
     // Control buttons
     elements.startBtn.addEventListener('click', handleStart);
@@ -238,6 +253,27 @@ function updateConfig() {
         retryLimit: 3
     };
     saveState();
+}
+
+function normalizeImageDownloadSettings(settings = {}) {
+    const displayMode = ['visible', 'hidden'].includes(settings.displayMode)
+        ? settings.displayMode
+        : 'visible';
+
+    return {
+        detectionEnabled: settings.detectionEnabled !== false,
+        displayMode
+    };
+}
+
+function updateImageDownloadSettings() {
+    state.imageDownloadSettings = normalizeImageDownloadSettings({
+        detectionEnabled: elements.imageDownloadDetectionEnabled.checked,
+        displayMode: elements.imageDownloadDisplayMode.value
+    });
+    elements.imageDownloadDisplayMode.disabled = !state.imageDownloadSettings.detectionEnabled;
+    saveState();
+    showStatus('图片下载设置已保存，Amazon页面会自动更新', 'success');
 }
 
 // Handle start
@@ -493,6 +529,7 @@ async function saveState() {
             scraperUrlsHash: state.urlsHash,
             scraperData: state.scrapedData,
             scraperConfig: state.config,
+            imageDownloadSettings: state.imageDownloadSettings,
             scraperStats: state.stats,
             scraperRunning: state.isRunning,
             scraperPaused: state.isPaused
@@ -545,6 +582,7 @@ function updateUI() {
     elements.pauseBtn.style.display = (state.isRunning && !state.isPaused) ? 'inline-flex' : 'none';
     elements.resumeBtn.style.display = (state.isRunning && state.isPaused) ? 'inline-flex' : 'none';
     elements.stopBtn.style.display = state.isRunning ? 'inline-flex' : 'none';
+    elements.imageDownloadDisplayMode.disabled = !state.imageDownloadSettings.detectionEnabled;
 
     // Update container class for animation
     if (state.isRunning && !state.isPaused) {

@@ -179,6 +179,26 @@ body {
     border-color: var(--primary-color);
 }
 
+.setting-item select {
+    height: 28px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    background: #fff;
+    color: var(--text-primary);
+}
+
+.setting-item select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.setting-item select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .checkbox-group {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -200,6 +220,20 @@ body {
 
 .checkbox-item span {
     color: var(--text-secondary);
+}
+
+.image-download-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    align-items: end;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+}
+
+.compact-setting {
+    gap: 3px;
 }
 
 /* Progress */
