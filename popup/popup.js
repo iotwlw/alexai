@@ -1,3 +1,5 @@
+const DEFAULT_LINK_INSPECTION_API_URL = 'http://127.0.0.1:8080';
+
 // Popup State
 const state = {
     urls: [],
@@ -18,7 +20,21 @@ const state = {
     },
     imageDownloadSettings: {
         detectionEnabled: true,
-        displayMode: 'visible'
+        displayMode: 'hover',
+        qualityMode: 'high'
+    },
+    linkInspection: {
+        input: '',
+        results: [],
+        isRunning: false,
+        statusMessage: '尚未运行',
+        settings: {
+            apiBaseUrl: DEFAULT_LINK_INSPECTION_API_URL,
+            licenseCode: '',
+            verified: false,
+            lastVerifiedAt: '',
+            domain: 'www.amazon.com'
+        }
     },
     stats: {
         total: 0,
@@ -46,6 +62,7 @@ const elements = {
     enableRetry: document.getElementById('enableRetry'),
     imageDownloadDetectionEnabled: document.getElementById('imageDownloadDetectionEnabled'),
     imageDownloadDisplayMode: document.getElementById('imageDownloadDisplayMode'),
+    imageDownloadQualityMode: document.getElementById('imageDownloadQualityMode'),
     progressBar: document.getElementById('progressBar'),
     progressPercent: document.getElementById('progressPercent'),
     statTotal: document.getElementById('statTotal'),
@@ -61,15 +78,38 @@ const elements = {
     exportCsv: document.getElementById('exportCsv'),
     exportJson: document.getElementById('exportJson'),
     clearData: document.getElementById('clearData'),
-    dataCount: document.getElementById('dataCount')
+    dataCount: document.getElementById('dataCount'),
+    planBadge: document.getElementById('planBadge'),
+    inspectionPlanBadge: document.getElementById('inspectionPlanBadge'),
+    workspaceTabs: Array.from(document.querySelectorAll('.workspace-tab')),
+    scraperWorkspace: document.getElementById('scraperWorkspace'),
+    inspectionWorkspace: document.getElementById('inspectionWorkspace'),
+    inspectionInput: document.getElementById('inspectionInput'),
+    inspectionCount: document.getElementById('inspectionCount'),
+    inspectionLoadFromFile: document.getElementById('inspectionLoadFromFile'),
+    inspectionFileInput: document.getElementById('inspectionFileInput'),
+    clearInspectionUrls: document.getElementById('clearInspectionUrls'),
+    inspectionDomain: document.getElementById('inspectionDomain'),
+    linkInspectionLicenseCode: document.getElementById('linkInspectionLicenseCode'),
+    saveLinkInspectionLicense: document.getElementById('saveLinkInspectionLicense'),
+    linkInspectionLicenseStatus: document.getElementById('linkInspectionLicenseStatus'),
+    runLinkInspection: document.getElementById('runLinkInspection'),
+    inspectionResultStatus: document.getElementById('inspectionResultStatus'),
+    inspectionSuccessCount: document.getElementById('inspectionSuccessCount'),
+    inspectionFailedCount: document.getElementById('inspectionFailedCount'),
+    inspectionResultsBody: document.getElementById('inspectionResultsBody'),
+    exportInspectionCsv: document.getElementById('exportInspectionCsv'),
+    exportInspectionJson: document.getElementById('exportInspectionJson'),
+    linkInspectionApiUrl: document.getElementById('linkInspectionApiUrl'),
+    inspectionLockPanel: document.getElementById('inspectionLockPanel')
 };
 
 // Initialize
-function init() {
-    loadSavedState();
+async function init() {
     bindEvents();
     updateUI();
-    checkRunningStatus();
+    await loadSavedState();
+    await checkRunningStatus();
 }
 
 // Load saved state from chrome.storage
@@ -83,7 +123,10 @@ async function loadSavedState() {
             'scraperStats',
             'scraperRunning',
             'scraperPaused',
-            'imageDownloadSettings'
+            'imageDownloadSettings',
+            'linkInspectionInput',
+            'linkInspectionResults',
+            'linkInspectionSettings'
         ]);
 
         if (result.scraperUrls) {
@@ -119,6 +162,19 @@ async function loadSavedState() {
             Object.assign(state.imageDownloadSettings, normalizeImageDownloadSettings(result.imageDownloadSettings));
         }
 
+        if (result.linkInspectionInput !== undefined) {
+            state.linkInspection.input = String(result.linkInspectionInput || '');
+            elements.inspectionInput.value = state.linkInspection.input;
+        }
+
+        if (Array.isArray(result.linkInspectionResults)) {
+            state.linkInspection.results = result.linkInspectionResults;
+        }
+
+        if (result.linkInspectionSettings) {
+            Object.assign(state.linkInspection.settings, normalizeLinkInspectionSettings(result.linkInspectionSettings));
+        }
+
         // Load config into UI
         elements.delayMin.value = state.config.delayMin / 1000;
         elements.delayMax.value = state.config.delayMax / 1000;
@@ -130,8 +186,13 @@ async function loadSavedState() {
         elements.enableRetry.checked = state.config.enableRetry;
         elements.imageDownloadDetectionEnabled.checked = state.imageDownloadSettings.detectionEnabled;
         elements.imageDownloadDisplayMode.value = state.imageDownloadSettings.displayMode;
+        elements.imageDownloadQualityMode.value = state.imageDownloadSettings.qualityMode;
+        elements.linkInspectionLicenseCode.value = state.linkInspection.settings.licenseCode;
+        elements.linkInspectionApiUrl.value = state.linkInspection.settings.apiBaseUrl;
+        elements.inspectionDomain.value = state.linkInspection.settings.domain;
 
         updateUI();
+        updateLinkInspectionUI();
     } catch (error) {
         console.error('Failed to load saved state:', error);
     }
@@ -156,6 +217,7 @@ function bindEvents() {
     elements.enableRetry.addEventListener('change', updateConfig);
     elements.imageDownloadDetectionEnabled.addEventListener('change', updateImageDownloadSettings);
     elements.imageDownloadDisplayMode.addEventListener('change', updateImageDownloadSettings);
+    elements.imageDownloadQualityMode.addEventListener('change', updateImageDownloadSettings);
 
     // Control buttons
     elements.startBtn.addEventListener('click', handleStart);
@@ -167,6 +229,22 @@ function bindEvents() {
     elements.exportCsv.addEventListener('click', exportCSV);
     elements.exportJson.addEventListener('click', exportJSON);
     elements.clearData.addEventListener('click', handleClearData);
+
+    // Workspace navigation and link inspection
+    elements.workspaceTabs.forEach(tab => {
+        tab.addEventListener('click', () => switchWorkspace(tab.dataset.workspace));
+    });
+    elements.inspectionInput.addEventListener('input', handleInspectionInput);
+    elements.inspectionLoadFromFile.addEventListener('click', () => elements.inspectionFileInput.click());
+    elements.inspectionFileInput.addEventListener('change', handleInspectionFileLoad);
+    elements.clearInspectionUrls.addEventListener('click', clearInspectionInput);
+    elements.inspectionDomain.addEventListener('change', saveLinkInspectionSettings);
+    elements.linkInspectionLicenseCode.addEventListener('input', handleLinkInspectionLicenseInput);
+    elements.saveLinkInspectionLicense.addEventListener('click', handleSaveLinkInspectionLicense);
+    elements.linkInspectionApiUrl.addEventListener('change', handleLinkInspectionApiUrlChange);
+    elements.runLinkInspection.addEventListener('click', handleRunLinkInspection);
+    elements.exportInspectionCsv.addEventListener('click', exportInspectionCSV);
+    elements.exportInspectionJson.addEventListener('click', exportInspectionJSON);
 }
 
 // Handle URL input
@@ -180,7 +258,7 @@ function handleUrlInput() {
     // 注意：不在这里更新 urlsHash，只在启动成功后更新
     // 这样可以正确检测用户是否修改了输入框内容
 
-    elements.urlCount.textContent = `已导入: ${state.urls.length} 个URL`;
+    elements.urlCount.textContent = `${state.urls.length} 个链接`;
     saveState();
 }
 
@@ -256,24 +334,394 @@ function updateConfig() {
 }
 
 function normalizeImageDownloadSettings(settings = {}) {
-    const displayMode = ['visible', 'hidden'].includes(settings.displayMode)
-        ? settings.displayMode
-        : 'visible';
+    const requestedDisplayMode = settings.displayMode === 'hidden'
+        ? 'hover'
+        : settings.displayMode;
+    const displayMode = ['visible', 'hover'].includes(requestedDisplayMode)
+        ? requestedDisplayMode
+        : 'hover';
+    const qualityMode = ['high', 'both'].includes(settings.qualityMode)
+        ? settings.qualityMode
+        : 'high';
 
     return {
         detectionEnabled: settings.detectionEnabled !== false,
-        displayMode
+        displayMode,
+        qualityMode
     };
 }
 
 function updateImageDownloadSettings() {
     state.imageDownloadSettings = normalizeImageDownloadSettings({
         detectionEnabled: elements.imageDownloadDetectionEnabled.checked,
-        displayMode: elements.imageDownloadDisplayMode.value
+        displayMode: elements.imageDownloadDisplayMode.value,
+        qualityMode: elements.imageDownloadQualityMode.value
     });
     elements.imageDownloadDisplayMode.disabled = !state.imageDownloadSettings.detectionEnabled;
+    elements.imageDownloadQualityMode.disabled = !state.imageDownloadSettings.detectionEnabled;
     saveState();
-    showStatus('图片下载设置已保存，Amazon页面会自动更新', 'success');
+    showStatus('页面下载设置已保存，已同步到 Amazon 页面', 'success');
+}
+
+function normalizeLinkInspectionSettings(settings = {}) {
+    return {
+        apiBaseUrl: normalizeLinkInspectionApiUrl(settings.apiBaseUrl || DEFAULT_LINK_INSPECTION_API_URL),
+        licenseCode: String(settings.licenseCode || '').trim(),
+        verified: settings.verified === true,
+        lastVerifiedAt: String(settings.lastVerifiedAt || ''),
+        domain: normalizeInspectionDomain(settings.domain)
+    };
+}
+
+function normalizeInspectionDomain(value) {
+    const allowedDomains = new Set([
+        'www.amazon.com',
+        'www.amazon.ca',
+        'www.amazon.co.uk',
+        'www.amazon.de',
+        'www.amazon.co.jp'
+    ]);
+    const domain = String(value || '').trim().toLowerCase();
+    return allowedDomains.has(domain) ? domain : 'www.amazon.com';
+}
+
+function normalizeLinkInspectionApiUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return DEFAULT_LINK_INSPECTION_API_URL;
+
+    try {
+        const url = new URL(raw);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            return DEFAULT_LINK_INSPECTION_API_URL;
+        }
+
+        return url.href.replace(/\/+$/, '');
+    } catch (_) {
+        return DEFAULT_LINK_INSPECTION_API_URL;
+    }
+}
+
+function switchWorkspace(workspace) {
+    const inspectionActive = workspace === 'inspection';
+    elements.workspaceTabs.forEach(tab => {
+        const active = tab.dataset.workspace === workspace;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+    });
+    elements.scraperWorkspace.classList.toggle('active', !inspectionActive);
+    elements.scraperWorkspace.hidden = inspectionActive;
+    elements.inspectionWorkspace.classList.toggle('active', inspectionActive);
+    elements.inspectionWorkspace.hidden = !inspectionActive;
+    if (inspectionActive) {
+        updateLinkInspectionUI();
+    }
+}
+
+function getInspectionInputLines() {
+    return elements.inspectionInput.value
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+}
+
+function handleInspectionInput() {
+    state.linkInspection.input = elements.inspectionInput.value;
+    state.linkInspection.statusMessage = '尚未运行';
+    updateLinkInspectionUI();
+    saveState();
+}
+
+async function handleInspectionFileLoad(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+        const text = await file.text();
+        elements.inspectionInput.value = text;
+        handleInspectionInput();
+        showInspectionStatus(`已导入 ${getInspectionInputLines().length} 条链接`, 'success');
+    } catch (error) {
+        showInspectionStatus(`文件读取失败：${error.message}`, 'error');
+    } finally {
+        event.target.value = '';
+    }
+}
+
+function clearInspectionInput() {
+    elements.inspectionInput.value = '';
+    state.linkInspection.input = '';
+    state.linkInspection.results = [];
+    state.linkInspection.statusMessage = '尚未运行';
+    saveState();
+    updateLinkInspectionUI();
+}
+
+function saveLinkInspectionSettings() {
+    state.linkInspection.settings = normalizeLinkInspectionSettings({
+        ...state.linkInspection.settings,
+        domain: elements.inspectionDomain.value
+    });
+    saveState();
+}
+
+function handleLinkInspectionApiUrlChange() {
+    state.linkInspection.settings = normalizeLinkInspectionSettings({
+        ...state.linkInspection.settings,
+        apiBaseUrl: elements.linkInspectionApiUrl.value,
+        verified: false
+    });
+    elements.linkInspectionApiUrl.value = state.linkInspection.settings.apiBaseUrl;
+    saveState();
+    updateLinkInspectionUI();
+}
+
+function handleLinkInspectionLicenseInput() {
+    const changed = elements.linkInspectionLicenseCode.value.trim() !== state.linkInspection.settings.licenseCode;
+    if (changed) {
+        elements.linkInspectionLicenseStatus.textContent = '授权码有修改，请先保存';
+        elements.linkInspectionLicenseStatus.dataset.type = 'info';
+    }
+}
+
+async function handleSaveLinkInspectionLicense() {
+    const licenseCode = elements.linkInspectionLicenseCode.value.trim();
+    state.linkInspection.settings = normalizeLinkInspectionSettings({
+        ...state.linkInspection.settings,
+        licenseCode,
+        verified: false,
+        lastVerifiedAt: ''
+    });
+    await saveState();
+
+    if (!licenseCode) {
+        showInspectionStatus('请输入授权码', 'error');
+        return;
+    }
+
+    showInspectionStatus('授权码已保存，将在首次巡查时向服务端验证', 'info');
+    updateLinkInspectionUI();
+}
+
+function sendExtensionMessage(message) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(message, response => {
+            const error = chrome.runtime.lastError;
+            if (error) {
+                reject(new Error(error.message));
+                return;
+            }
+
+            resolve(response);
+        });
+    });
+}
+
+async function requestInspectionOriginPermission(apiBaseUrl) {
+    if (!chrome.permissions?.contains || !chrome.permissions?.request) return true;
+
+    const url = new URL(apiBaseUrl);
+    const originPattern = `${url.protocol}//${url.hostname}/*`;
+    const alreadyGranted = await chrome.permissions.contains({ origins: [originPattern] });
+    if (alreadyGranted) return true;
+
+    return chrome.permissions.request({ origins: [originPattern] });
+}
+
+async function handleRunLinkInspection() {
+    const lines = getInspectionInputLines();
+    if (!lines.length) {
+        showInspectionStatus('请先输入链接或 ASIN', 'error');
+        return;
+    }
+
+    if (lines.length > 50) {
+        showInspectionStatus('单次最多巡查 50 条，请拆分后再运行', 'error');
+        return;
+    }
+
+    if (!state.linkInspection.settings.licenseCode) {
+        showInspectionStatus('请先输入授权码', 'error');
+        elements.linkInspectionLicenseCode.focus();
+        return;
+    }
+
+    if (elements.linkInspectionLicenseCode.value.trim() !== state.linkInspection.settings.licenseCode) {
+        showInspectionStatus('授权码有修改，请先保存', 'error');
+        elements.saveLinkInspectionLicense.focus();
+        return;
+    }
+
+    const apiBaseUrl = normalizeLinkInspectionApiUrl(elements.linkInspectionApiUrl.value);
+    try {
+        const permissionGranted = await requestInspectionOriginPermission(apiBaseUrl);
+        if (!permissionGranted) {
+            showInspectionStatus('未获得巡查服务的网络权限', 'error');
+            return;
+        }
+    } catch (error) {
+        showInspectionStatus(`服务地址无效：${error.message}`, 'error');
+        return;
+    }
+
+    state.linkInspection.settings = normalizeLinkInspectionSettings({
+        ...state.linkInspection.settings,
+        apiBaseUrl,
+        domain: elements.inspectionDomain.value
+    });
+    state.linkInspection.isRunning = true;
+    state.linkInspection.statusMessage = '正在巡查...';
+    state.linkInspection.results = [];
+    await saveState();
+    updateLinkInspectionUI();
+
+    try {
+        const response = await sendExtensionMessage({
+            action: 'runLinkInspection',
+            inputs: lines,
+            domain: state.linkInspection.settings.domain
+        });
+
+        if (!response?.success) {
+            throw new Error(response?.error || '巡查服务返回失败');
+        }
+
+        state.linkInspection.results = Array.isArray(response.data?.items) ? response.data.items : [];
+        state.linkInspection.settings.verified = true;
+        state.linkInspection.settings.lastVerifiedAt = new Date().toISOString();
+        state.linkInspection.statusMessage = `已完成 ${state.linkInspection.results.length} 条`;
+        await saveState();
+        showInspectionStatus(state.linkInspection.statusMessage, 'success');
+    } catch (error) {
+        state.linkInspection.settings.verified = false;
+        state.linkInspection.statusMessage = error.message;
+        await saveState();
+        showInspectionStatus(error.message, 'error');
+    } finally {
+        state.linkInspection.isRunning = false;
+        updateLinkInspectionUI();
+    }
+}
+
+function showInspectionStatus(message, type = 'info') {
+    state.linkInspection.statusMessage = message;
+    elements.linkInspectionLicenseStatus.textContent = message;
+    elements.linkInspectionLicenseStatus.dataset.type = type;
+    elements.inspectionResultStatus.textContent = message;
+}
+
+function updateLinkInspectionUI() {
+    if (!elements.inspectionInput) return;
+
+    const lines = getInspectionInputLines();
+    const settings = state.linkInspection.settings;
+    const verified = settings.verified === true;
+    elements.inspectionCount.textContent = `${lines.length} 条`;
+    elements.planBadge.textContent = verified ? '专业版' : '免费版';
+    elements.planBadge.className = `plan-badge ${verified ? 'pro' : 'free'}`;
+    elements.inspectionPlanBadge.textContent = verified ? '已授权' : '未授权';
+    elements.inspectionPlanBadge.className = `plan-badge ${verified ? 'pro' : 'free'}`;
+    elements.inspectionLockPanel.classList.toggle('authorized', verified);
+    elements.linkInspectionLicenseStatus.textContent = verified
+        ? `已验证${settings.lastVerifiedAt ? ` · ${formatLocalTime(settings.lastVerifiedAt)}` : ''}`
+        : (state.linkInspection.statusMessage || '尚未验证');
+    elements.linkInspectionLicenseStatus.dataset.type = verified ? 'success' : 'info';
+    elements.runLinkInspection.disabled = state.linkInspection.isRunning;
+    elements.runLinkInspection.textContent = state.linkInspection.isRunning ? '巡查中...' : '开始链接巡查';
+    elements.exportInspectionCsv.disabled = state.linkInspection.results.length === 0;
+    elements.exportInspectionJson.disabled = state.linkInspection.results.length === 0;
+    elements.inspectionResultStatus.textContent = state.linkInspection.statusMessage || '尚未运行';
+    renderInspectionResults();
+}
+
+function formatLocalTime(value) {
+    try {
+        return new Date(value).toLocaleString();
+    } catch (_) {
+        return value;
+    }
+}
+
+function setTableCell(row, value) {
+    const cell = document.createElement('td');
+    cell.textContent = String(value || '-');
+    cell.title = String(value || '');
+    row.appendChild(cell);
+}
+
+function renderInspectionResults() {
+    const results = state.linkInspection.results;
+    const successCount = results.filter(item => item.status === 'success').length;
+    const failedCount = results.length - successCount;
+    elements.inspectionSuccessCount.textContent = successCount;
+    elements.inspectionFailedCount.textContent = failedCount;
+    elements.inspectionResultsBody.textContent = '';
+
+    if (!results.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 6;
+        cell.className = 'empty-row';
+        cell.textContent = '运行后显示结果';
+        row.appendChild(cell);
+        elements.inspectionResultsBody.appendChild(row);
+        return;
+    }
+
+    results.forEach(item => {
+        const row = document.createElement('tr');
+        if (item.status !== 'success') row.classList.add('failed');
+        setTableCell(row, item.asin || item.original_asin);
+        setTableCell(row, item.price);
+        setTableCell(row, item.coupon || item.display_discount);
+        setTableCell(row, item.choice_badge);
+        setTableCell(row, item.newer_model);
+        setTableCell(row, item.status === 'success' ? '成功' : (item.error_message || '失败'));
+        elements.inspectionResultsBody.appendChild(row);
+    });
+}
+
+function getInspectionExportRecords() {
+    return state.linkInspection.results.map(item => ({
+        输入: item.input || '',
+        URL: item.url || '',
+        原ASIN: item.original_asin || '',
+        ASIN: item.asin || '',
+        状态: item.status || '',
+        商品标题: item.product_title || '',
+        价格: item.price || '',
+        优惠券: item.coupon || '',
+        Deal: item.is_deal || '',
+        Prime专享: item.prime_exclusive || '',
+        展示折扣: item.display_discount || '',
+        评分: item.rating || '',
+        评价数: item.review_count || '',
+        促销检查: item.promo_check || '',
+        促销: item.promotion || '',
+        优惠码: item.promo_code || '',
+        保留: item.keep || '',
+        Choice: item.choice_badge || '',
+        高频退货: item.frequent_return || '',
+        新款: item.newer_model || '',
+        错误: item.error_message || '',
+        检查时间: item.captured_at || ''
+    }));
+}
+
+function exportInspectionCSV() {
+    const records = getInspectionExportRecords();
+    if (!records.length) return;
+    const headers = Object.keys(records[0]);
+    const rows = records.map(record => headers.map(header => record[header] || ''));
+    const csv = [headers, ...rows].map(row => row.map(toCsvCell).join(',')).join('\n');
+    downloadFile(csv, 'alexai_link_inspection.csv', 'text/csv;charset=utf-8;');
+    showInspectionStatus('巡查 CSV 已导出', 'success');
+}
+
+function exportInspectionJSON() {
+    const records = getInspectionExportRecords();
+    if (!records.length) return;
+    downloadFile(JSON.stringify(records, null, 2), 'alexai_link_inspection.json', 'application/json;charset=utf-8;');
+    showInspectionStatus('巡查 JSON 已导出', 'success');
 }
 
 // Handle start
@@ -530,6 +978,9 @@ async function saveState() {
             scraperData: state.scrapedData,
             scraperConfig: state.config,
             imageDownloadSettings: state.imageDownloadSettings,
+            linkInspectionInput: state.linkInspection.input,
+            linkInspectionResults: state.linkInspection.results,
+            linkInspectionSettings: state.linkInspection.settings,
             scraperStats: state.stats,
             scraperRunning: state.isRunning,
             scraperPaused: state.isPaused
@@ -567,14 +1018,14 @@ function updateUI() {
     elements.statFailed.textContent = state.stats.failed;
     elements.statPending.textContent = state.stats.pending;
     elements.statActive.textContent = state.stats.active || 0;
-    elements.dataCount.textContent = `已抓取数据: ${state.scrapedData.length} 条`;
+    elements.urlCount.textContent = `${state.urls.length} 个链接`;
+    elements.dataCount.textContent = `已抓取 ${state.scrapedData.length} 条`;
 
     // Update progress
     const progress = state.stats.total > 0
         ? Math.round(((state.stats.success + state.stats.failed) / state.stats.total) * 100)
         : 0;
     elements.progressBar.style.width = progress + '%';
-    elements.progressBar.textContent = progress + '%';
     elements.progressPercent.textContent = progress + '%';
 
     // Update button visibility
@@ -583,6 +1034,8 @@ function updateUI() {
     elements.resumeBtn.style.display = (state.isRunning && state.isPaused) ? 'inline-flex' : 'none';
     elements.stopBtn.style.display = state.isRunning ? 'inline-flex' : 'none';
     elements.imageDownloadDisplayMode.disabled = !state.imageDownloadSettings.detectionEnabled;
+    elements.imageDownloadQualityMode.disabled = !state.imageDownloadSettings.detectionEnabled;
+    updateLinkInspectionUI();
 
     // Update container class for animation
     if (state.isRunning && !state.isPaused) {
@@ -597,11 +1050,11 @@ function showStatus(message, type = 'info') {
     elements.statusMessage.textContent = message;
 
     elements.statusMessage.style.color = {
-        success: 'var(--success-color)',
-        error: 'var(--danger-color)',
-        warning: 'var(--warning-color)',
-        info: 'var(--text-secondary)'
-    }[type] || 'var(--text-secondary)';
+        success: 'var(--success)',
+        error: 'var(--danger)',
+        warning: 'var(--warning)',
+        info: 'var(--muted)'
+    }[type] || 'var(--muted)';
 }
 
 // Listen for messages from background

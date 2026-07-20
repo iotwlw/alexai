@@ -3,163 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amazon Alexa for Shopping 信息抓取工具</title>
+    <title>alexai</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>🛒 Amazon Alexa for Shopping 信息抓取工具</h1>
-            <p class="subtitle">alexai v1.0.0 | 商品页 Alexa for Shopping 抓取</p>
-        </div>
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="brand-lockup">
+                <img src="../icons/icon48.png" alt="alexai" width="32" height="32">
+                <div>
+                    <div class="brand-name">alexai</div>
+                    <div class="brand-subtitle">Amazon 商品信息工具</div>
+                </div>
+            </div>
+            <div class="header-meta">
+                <span id="planBadge" class="plan-badge free">免费版</span>
+                <span class="version-label">v1.0.0</span>
+            </div>
+        </header>
 
-        <!-- URL Input Section -->
-        <div class="section input-section">
-            <div class="section-header">
-                <h2>📁 URL导入</h2>
-            </div>
-            <div class="input-group">
-                <textarea id="urlInput" placeholder="请粘贴Amazon商品页URL或ASIN，每行一个&#10;例如：&#10;https://www.amazon.com/dp/B0D2R3KRFN?th=1&#10;B0D2R3KRFN"></textarea>
-                <div class="button-group">
-                    <button id="loadFromFile" class="btn btn-secondary">📂 从文件导入</button>
-                    <button id="clearUrls" class="btn btn-secondary">🗑️ 清空</button>
-                </div>
-            </div>
-            <div class="url-stats">
-                <span id="urlCount">已导入: 0 个URL</span>
-            </div>
-        </div>
+        <nav class="workspace-tabs" aria-label="工作模式">
+            <button class="workspace-tab active" type="button" data-workspace="scraper">Alexa / Rufus 抓取</button>
+            <button class="workspace-tab" type="button" data-workspace="inspection">链接巡查 <span class="pro-label">PRO</span></button>
+        </nav>
 
-        <!-- Settings Section -->
-        <div class="section settings-section">
-            <div class="section-header">
-                <h2>⚙️ 抓取设置</h2>
-            </div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label for="delayMin">最小延迟 (秒)</label>
-                    <input type="number" id="delayMin" value="2" min="1" max="30">
-                </div>
-                <div class="setting-item">
-                    <label for="delayMax">最大延迟 (秒)</label>
-                    <input type="number" id="delayMax" value="5" min="1" max="60">
-                </div>
-                <div class="setting-item">
-                    <label for="minConcurrentWindows">最小窗口</label>
-                    <input type="number" id="minConcurrentWindows" value="2" min="2" max="5">
-                </div>
-                <div class="setting-item">
-                    <label for="maxConcurrentWindows">最大窗口</label>
-                    <input type="number" id="maxConcurrentWindows" value="5" min="2" max="5">
-                </div>
-                <div class="setting-item">
-                    <label for="batchSize">批次大小</label>
-                    <input type="number" id="batchSize" value="25" min="5" max="100" title="实际批次大小将在此值基础上 ±20% 随机">
-                </div>
-                <div class="setting-item">
-                    <label for="restTime">批次休息 (秒)</label>
-                    <input type="number" id="restTime" value="60" min="10" max="300" title="实际休息时间将在此值基础上 ±20% 随机">
-                </div>
-            </div>
-            <div class="checkbox-group">
-                <label class="checkbox-item">
-                    <input type="checkbox" id="enableAntiDetection" checked>
-                    <span title="随机延迟 + 模拟行为">防检测</span>
-                </label>
-                <label class="checkbox-item">
-                    <input type="checkbox" id="enableRetry" checked>
-                    <span title="失败后最多重试3次">自动重试</span>
-                </label>
-            </div>
-            <div class="image-download-settings">
-                <label class="checkbox-item">
-                    <input type="checkbox" id="imageDownloadDetectionEnabled" checked>
-                    <span title="关闭后不再检测页面图片/视频，也不显示DL、XL、VID按钮">图片检测</span>
-                </label>
-                <div class="setting-item compact-setting">
-                    <label for="imageDownloadDisplayMode">按钮显示</label>
-                    <select id="imageDownloadDisplayMode">
-                        <option value="visible">直接显示</option>
-                        <option value="hidden">不显示</option>
-                    </select>
-                </div>
-            </div>
-        </div>
+        <main>
+            <section id="scraperWorkspace" class="workspace active" aria-labelledby="scraperWorkspaceTitle">
+                <div class="workspace-grid">
+                    <div class="workspace-main">
+                        <section class="work-section input-section">
+                            <div class="section-heading">
+                                <div>
+                                    <h1 id="scraperWorkspaceTitle">批量抓取</h1>
+                                    <p>每行一个 Amazon 商品链接或 ASIN</p>
+                                </div>
+                                <span id="urlCount" class="count-label">0 个链接</span>
+                            </div>
+                            <div class="input-group">
+                                <textarea id="urlInput" placeholder="https://www.amazon.com/dp/B0D2R3KRFN?th=1&#10;B0D2R3KRFN"></textarea>
+                                <div class="button-stack">
+                                    <button id="loadFromFile" class="btn btn-secondary" type="button">导入文件</button>
+                                    <button id="clearUrls" class="btn btn-quiet" type="button">清空</button>
+                                </div>
+                            </div>
+                        </section>
 
-        <!-- Progress Section -->
-        <div class="section progress-section">
-            <div class="section-header">
-                <h2>📊 抓取进度</h2>
-            </div>
-            <div class="progress-container">
-                <div class="progress-bar">
-                    <div id="progressBar" class="progress-fill"></div>
-                </div>
-                <div class="progress-text">
-                    <span id="progressPercent">0%</span>
-                </div>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-label">总任务</div>
-                    <div id="statTotal" class="stat-value">0</div>
-                </div>
-                <div class="stat-item success">
-                    <div class="stat-label">成功</div>
-                    <div id="statSuccess" class="stat-value">0</div>
-                </div>
-                <div class="stat-item error">
-                    <div class="stat-label">失败</div>
-                    <div id="statFailed" class="stat-value">0</div>
-                </div>
-                <div class="stat-item pending">
-                    <div class="stat-label">待处理</div>
-                    <div id="statPending" class="stat-value">0</div>
-                </div>
-                <div class="stat-item active">
-                    <div class="stat-label">窗口</div>
-                    <div id="statActive" class="stat-value">0</div>
-                </div>
-            </div>
-            <div class="status-message">
-                <span id="statusMessage">等待开始...</span>
-            </div>
-        </div>
+                        <details class="work-section advanced-section" open>
+                            <summary>任务设置</summary>
+                            <div class="settings-grid">
+                                <label class="setting-item">
+                                    <span>最小延迟（秒）</span>
+                                    <input type="number" id="delayMin" value="2" min="1" max="30">
+                                </label>
+                                <label class="setting-item">
+                                    <span>最大延迟（秒）</span>
+                                    <input type="number" id="delayMax" value="5" min="1" max="60">
+                                </label>
+                                <label class="setting-item">
+                                    <span>最小窗口</span>
+                                    <input type="number" id="minConcurrentWindows" value="2" min="2" max="5">
+                                </label>
+                                <label class="setting-item">
+                                    <span>最大窗口</span>
+                                    <input type="number" id="maxConcurrentWindows" value="5" min="2" max="5">
+                                </label>
+                                <label class="setting-item">
+                                    <span>批次大小</span>
+                                    <input type="number" id="batchSize" value="25" min="5" max="100">
+                                </label>
+                                <label class="setting-item">
+                                    <span>批次休息（秒）</span>
+                                    <input type="number" id="restTime" value="60" min="10" max="300">
+                                </label>
+                            </div>
+                            <div class="setting-toggles">
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="enableAntiDetection" checked>
+                                    <span>保持访问节奏</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="enableRetry" checked>
+                                    <span>失败自动重试</span>
+                                </label>
+                            </div>
+                            <div class="download-settings-inline">
+                                <div class="subsection-label">页面下载按钮</div>
+                                <label class="setting-item compact-setting">
+                                    <span>显示方式</span>
+                                    <select id="imageDownloadDisplayMode">
+                                        <option value="hover">悬停显示</option>
+                                        <option value="visible">直接显示</option>
+                                    </select>
+                                </label>
+                                <label class="setting-item compact-setting">
+                                    <span>图片清晰度</span>
+                                    <select id="imageDownloadQualityMode">
+                                        <option value="high">仅高清 HD</option>
+                                        <option value="both">高清 + 标清</option>
+                                    </select>
+                                </label>
+                                <label class="checkbox-item compact-check">
+                                    <input type="checkbox" id="imageDownloadDetectionEnabled" checked>
+                                    <span>启用图片和视频按钮</span>
+                                </label>
+                            </div>
+                        </details>
 
-        <!-- Control Buttons -->
-        <div class="control-section">
-            <button id="startBtn" class="btn btn-primary btn-large">▶️ 开始抓取</button>
-            <button id="pauseBtn" class="btn btn-warning btn-large" style="display: none;">⏸️ 暂停</button>
-            <button id="resumeBtn" class="btn btn-primary btn-large" style="display: none;">▶️ 继续</button>
-            <button id="stopBtn" class="btn btn-danger btn-large" style="display: none;">⏹️ 停止</button>
-        </div>
+                        <div class="control-section">
+                            <button id="startBtn" class="btn btn-primary btn-large" type="button">开始抓取</button>
+                            <button id="pauseBtn" class="btn btn-warning btn-large" type="button" style="display: none;">暂停</button>
+                            <button id="resumeBtn" class="btn btn-primary btn-large" type="button" style="display: none;">继续</button>
+                            <button id="stopBtn" class="btn btn-danger btn-large" type="button" style="display: none;">停止</button>
+                        </div>
+                    </div>
 
-        <!-- Data Export Section -->
-        <div class="section export-section">
-            <div class="section-header">
-                <h2>💾 数据导出</h2>
-            </div>
-            <div class="export-group">
-                <button id="exportCsv" class="btn btn-success">📊 导出CSV</button>
-                <button id="exportJson" class="btn btn-success">📋 导出JSON</button>
-                <button id="clearData" class="btn btn-secondary">🗑️ 清空数据</button>
-            </div>
-            <div class="data-info">
-                <span id="dataCount">已抓取数据: 0 条</span>
-            </div>
-        </div>
+                    <aside class="workspace-side">
+                        <section class="work-section progress-section">
+                            <div class="section-heading compact-heading">
+                                <div>
+                                    <h2>抓取进度</h2>
+                                    <p id="statusMessage">等待开始</p>
+                                </div>
+                                <span id="progressPercent" class="progress-value">0%</span>
+                            </div>
+                            <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+                            <div class="stats-grid">
+                                <div class="stat-item"><span>总任务</span><strong id="statTotal">0</strong></div>
+                                <div class="stat-item success"><span>成功</span><strong id="statSuccess">0</strong></div>
+                                <div class="stat-item error"><span>失败</span><strong id="statFailed">0</strong></div>
+                                <div class="stat-item pending"><span>待处理</span><strong id="statPending">0</strong></div>
+                                <div class="stat-item active"><span>窗口</span><strong id="statActive">0</strong></div>
+                            </div>
+                        </section>
 
-        <!-- Footer -->
-        <div class="footer">
-            <p>💡 提示：抓取过程中请勿关闭浏览器</p>
-            <p class="footer-note">支持断点续传 | 自动保存进度</p>
-        </div>
+                        <section class="work-section export-section">
+                            <div class="section-heading compact-heading">
+                                <div>
+                                    <h2>导出结果</h2>
+                                    <p id="dataCount">已抓取 0 条</p>
+                                </div>
+                            </div>
+                            <div class="export-group">
+                                <button id="exportCsv" class="btn btn-success" type="button">导出 CSV</button>
+                                <button id="exportJson" class="btn btn-secondary" type="button">导出 JSON</button>
+                                <button id="clearData" class="btn btn-quiet" type="button">清空数据</button>
+                            </div>
+                        </section>
+                    </aside>
+                </div>
+            </section>
+
+            <section id="inspectionWorkspace" class="workspace" aria-labelledby="inspectionWorkspaceTitle" hidden>
+                <div class="inspection-header">
+                    <div>
+                        <h1 id="inspectionWorkspaceTitle">链接巡查</h1>
+                        <p>检查商品可售状态、优惠、Choice 和新款提示</p>
+                    </div>
+                    <span id="inspectionPlanBadge" class="plan-badge free">未授权</span>
+                </div>
+
+                <section id="inspectionLockPanel" class="license-panel">
+                    <div>
+                        <strong>专业版功能</strong>
+                        <p>输入授权码后才能开始链接巡查。授权码由服务端验证。</p>
+                    </div>
+                    <div class="license-row">
+                        <input id="linkInspectionLicenseCode" type="password" autocomplete="off" placeholder="输入授权码">
+                        <button id="saveLinkInspectionLicense" class="btn btn-primary" type="button">保存授权码</button>
+                    </div>
+                    <div id="linkInspectionLicenseStatus" class="inline-status" aria-live="polite">尚未验证</div>
+                </section>
+
+                <div class="inspection-grid">
+                    <section class="work-section inspection-input-section">
+                        <div class="section-heading">
+                            <div>
+                                <h2>巡查清单</h2>
+                                <p>服务端单次最多处理 50 条，保留输入顺序和重复项</p>
+                            </div>
+                            <span id="inspectionCount" class="count-label">0 条</span>
+                        </div>
+                        <textarea id="inspectionInput" class="inspection-textarea" placeholder="每行一个 Amazon 链接或 ASIN"></textarea>
+                        <div class="input-footer">
+                            <button id="inspectionLoadFromFile" class="btn btn-secondary" type="button">导入文件</button>
+                            <button id="clearInspectionUrls" class="btn btn-quiet" type="button">清空</button>
+                            <label class="domain-field">站点
+                                <select id="inspectionDomain">
+                                    <option value="www.amazon.com">amazon.com</option>
+                                    <option value="www.amazon.ca">amazon.ca</option>
+                                    <option value="www.amazon.co.uk">amazon.co.uk</option>
+                                    <option value="www.amazon.de">amazon.de</option>
+                                    <option value="www.amazon.co.jp">amazon.co.jp</option>
+                                </select>
+                            </label>
+                        </div>
+                        <button id="runLinkInspection" class="btn btn-primary btn-large" type="button">开始链接巡查</button>
+                    </section>
+
+                    <section class="work-section inspection-results-section">
+                        <div class="section-heading compact-heading">
+                            <div>
+                                <h2>巡查结果</h2>
+                                <p id="inspectionResultStatus">尚未运行</p>
+                            </div>
+                            <div class="inspection-summary" aria-label="巡查统计">
+                                <span><strong id="inspectionSuccessCount">0</strong> 成功</span>
+                                <span><strong id="inspectionFailedCount">0</strong> 失败</span>
+                            </div>
+                        </div>
+                        <div class="inspection-table-wrap">
+                            <table class="inspection-table">
+                                <thead>
+                                    <tr><th>ASIN</th><th>价格</th><th>优惠</th><th>Choice</th><th>新款</th><th>状态</th></tr>
+                                </thead>
+                                <tbody id="inspectionResultsBody">
+                                    <tr><td colspan="6" class="empty-row">运行后显示结果</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="export-group inspection-export-group">
+                            <button id="exportInspectionCsv" class="btn btn-success" type="button" disabled>导出巡查 CSV</button>
+                            <button id="exportInspectionJson" class="btn btn-secondary" type="button" disabled>导出 JSON</button>
+                        </div>
+                    </section>
+                </div>
+
+                <details class="service-settings">
+                    <summary>服务设置</summary>
+                    <label>巡查服务地址
+                        <input id="linkInspectionApiUrl" type="url" placeholder="http://127.0.0.1:8080">
+                    </label>
+                    <p>默认连接本机 `amazon-crawler` API；部署远程服务时填写 HTTPS 地址。扩展只发送巡查链接和授权码。</p>
+                </details>
+            </section>
+        </main>
     </div>
 
-    <!-- Hidden file input -->
-    <input type="file" id="fileInput" accept=".txt,.csv" style="display: none;">
-
+    <input type="file" id="fileInput" accept=".txt,.csv" hidden>
+    <input type="file" id="inspectionFileInput" accept=".txt,.csv" hidden>
     <script src="popup.js"></script>
 </body>
 </html>

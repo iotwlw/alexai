@@ -23,9 +23,11 @@
     let imageDownloadScanTimer = null;
     const DEFAULT_IMAGE_DOWNLOAD_SETTINGS = {
         detectionEnabled: true,
-        displayMode: 'visible'
+        displayMode: 'hover',
+        qualityMode: 'high'
     };
     let imageDownloadSettings = { ...DEFAULT_IMAGE_DOWNLOAD_SETTINGS };
+    let syncPageDownloadSettings = null;
 
     function cleanText(value) {
         return String(value || '')
@@ -37,20 +39,31 @@
     const assistantTextPattern = /Ask\s+Rufus|Rufus|Alexa\s+for\s+Shopping|Ask\s+Alexa/i;
 
     function normalizeImageDownloadSettings(settings = {}) {
-        const displayMode = ['visible', 'hidden'].includes(settings.displayMode)
-            ? settings.displayMode
-            : 'visible';
+        const requestedDisplayMode = settings.displayMode === 'hidden'
+            ? 'hover'
+            : settings.displayMode;
+        const displayMode = ['visible', 'hover'].includes(requestedDisplayMode)
+            ? requestedDisplayMode
+            : DEFAULT_IMAGE_DOWNLOAD_SETTINGS.displayMode;
+        const qualityMode = ['high', 'both'].includes(settings.qualityMode)
+            ? settings.qualityMode
+            : DEFAULT_IMAGE_DOWNLOAD_SETTINGS.qualityMode;
+
         return {
             detectionEnabled: settings.detectionEnabled !== false,
-            displayMode
+            displayMode,
+            qualityMode
         };
     }
 
     function applyImageDownloadSettings() {
         const root = document.documentElement;
         root.classList.toggle('alexai-image-downloads-disabled', !imageDownloadSettings.detectionEnabled);
-        root.classList.toggle('alexai-image-downloads-hidden', imageDownloadSettings.displayMode === 'hidden');
         root.classList.toggle('alexai-image-downloads-visible', imageDownloadSettings.displayMode === 'visible');
+        root.classList.toggle('alexai-image-downloads-hover', imageDownloadSettings.displayMode === 'hover');
+        root.classList.toggle('alexai-image-downloads-high-only', imageDownloadSettings.qualityMode === 'high');
+        root.classList.toggle('alexai-image-downloads-both', imageDownloadSettings.qualityMode === 'both');
+        syncPageDownloadSettings?.();
     }
 
     async function loadImageDownloadSettings() {
@@ -273,13 +286,29 @@
                 padding: 0;
                 opacity: 0.95;
                 pointer-events: auto;
-                transition: background-color 0.14s ease;
+                transform: translateY(0);
+                transition: background-color 0.14s ease, opacity 0.14s ease, transform 0.14s ease;
             }
 
             .alexai-image-downloads-disabled .alexai-image-download-button,
-            .alexai-image-downloads-disabled #alexai-video-download-panel,
-            .alexai-image-downloads-hidden .alexai-image-download-button,
-            .alexai-image-downloads-hidden #alexai-video-download-panel {
+            .alexai-image-downloads-disabled #alexai-video-download-panel {
+                display: none !important;
+            }
+
+            .alexai-image-downloads-hover .alexai-image-download-host > .alexai-image-download-button:not(.alexai-download-video-large) {
+                opacity: 0;
+                pointer-events: none;
+                transform: translateY(2px);
+            }
+
+            .alexai-image-downloads-hover .alexai-image-download-host:hover > .alexai-image-download-button:not(.alexai-download-video-large),
+            .alexai-image-downloads-hover .alexai-image-download-host:focus-within > .alexai-image-download-button:not(.alexai-download-video-large) {
+                opacity: 0.96;
+                pointer-events: auto;
+                transform: translateY(0);
+            }
+
+            .alexai-image-downloads-high-only .alexai-download-thumbnail {
                 display: none !important;
             }
 
@@ -321,8 +350,22 @@
                 background: rgba(17, 24, 39, 0.92);
             }
 
+            .alexai-image-download-button.alexai-download-video.alexai-download-video-large {
+                width: 88px;
+                height: 38px;
+                border-radius: 6px;
+                font-size: 13px;
+                letter-spacing: 0;
+                background: rgba(17, 24, 39, 0.94);
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
+            }
+
             .alexai-image-download-host.alexai-video-host-has-controls .alexai-download-video {
                 right: 46px;
+            }
+
+            .alexai-image-download-host.alexai-video-host-has-controls .alexai-download-video-large {
+                right: 52px;
             }
 
             .alexai-image-download-button:focus-visible {
@@ -1423,10 +1466,35 @@
         return false;
     }
 
+    function isLargeVideoDownloadHost(host) {
+        if (!host?.getBoundingClientRect) return false;
+
+        if (host.matches('#ive-hero-video-player, #video-outer-container, [class*="hero" i][class*="video" i]')) {
+            return true;
+        }
+
+        const rect = host.getBoundingClientRect();
+        return rect.width >= 360 && rect.height >= 180;
+    }
+
+    function updateVideoButtonPresentation(host, button, fallbackLabel = 'VID') {
+        if (!button) return;
+
+        const isLarge = isLargeVideoDownloadHost(host);
+        const label = isLarge ? '下载视频' : fallbackLabel;
+        button.classList.toggle('alexai-download-video-large', isLarge);
+        button.dataset.label = label;
+
+        if (!button.disabled) {
+            button.textContent = label;
+        }
+    }
+
     function attachVideoDownloadButton(host, video, label = 'VID') {
         const existingButton = host ? videoDownloadButtons.get(host) : null;
         if (!host) return false;
         if (existingButton?.isConnected && existingButton.dataset.videoUrl === video.url) {
+            updateVideoButtonPresentation(host, existingButton, label);
             updateVideoHostControlClass(host);
             return true;
         }
@@ -1443,11 +1511,10 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'alexai-image-download-button alexai-download-video';
-        button.dataset.label = label;
         button.dataset.videoUrl = video.url;
-        button.textContent = label;
         button.title = `Download Amazon video${video.title ? `: ${video.title}` : ''}`;
         button.setAttribute('aria-label', 'Download Amazon video');
+        updateVideoButtonPresentation(host, button, label);
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
@@ -1672,10 +1739,20 @@
     function attachImageDownloadButton(img, contextFactory) {
         const existingButton = imageDownloadButtons.get(img);
         const existingThumbnailButton = thumbnailDownloadButtons.get(img);
+        const standardEnabled = imageDownloadSettings.qualityMode === 'both';
+
+        if (existingButton?.isConnected && !standardEnabled) {
+            existingThumbnailButton?.remove();
+            thumbnailDownloadButtons.delete(img);
+            updateImageDownloadButtonPlacement(existingButton.closest('.alexai-image-download-host'));
+            return;
+        }
+
         if (existingButton?.isConnected && existingThumbnailButton?.isConnected) {
             updateImageDownloadButtonPlacement(existingButton.closest('.alexai-image-download-host'));
             return;
         }
+
         if (existingButton && !existingButton.isConnected) {
             imageDownloadButtons.delete(img);
         }
@@ -1689,29 +1766,35 @@
         host.classList.add('alexai-image-download-host');
         updateImageDownloadButtonPlacement(host);
 
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'alexai-image-download-button alexai-download-large';
-        button.dataset.label = 'DL';
-        button.textContent = 'DL';
-        button.title = 'Download large Amazon image';
-        button.setAttribute('aria-label', 'Download large Amazon image');
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            downloadImageForElement(img, contextFactory());
-        });
+        if (!existingButton?.isConnected) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'alexai-image-download-button alexai-download-large';
+            button.dataset.label = 'HD';
+            button.textContent = 'HD';
+            button.title = '下载高清图片';
+            button.setAttribute('aria-label', '下载高清图片');
+            button.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                downloadImageForElement(img, contextFactory());
+            });
 
-        imageDownloadButtons.set(img, button);
-        host.appendChild(button);
+            imageDownloadButtons.set(img, button);
+            host.appendChild(button);
+        }
+
+        if (!standardEnabled || existingThumbnailButton?.isConnected) {
+            return;
+        }
 
         const thumbnailButton = document.createElement('button');
         thumbnailButton.type = 'button';
         thumbnailButton.className = 'alexai-image-download-button alexai-download-thumbnail';
-        thumbnailButton.dataset.label = 'XL';
-        thumbnailButton.textContent = 'XL';
-        thumbnailButton.title = 'Download current thumbnail image';
-        thumbnailButton.setAttribute('aria-label', 'Download current thumbnail image');
+        thumbnailButton.dataset.label = 'SD';
+        thumbnailButton.textContent = 'SD';
+        thumbnailButton.title = '下载当前尺寸图片';
+        thumbnailButton.setAttribute('aria-label', '下载当前尺寸图片');
         thumbnailButton.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
@@ -1882,12 +1965,17 @@
             if (areaName !== 'local' || !changes.imageDownloadSettings) return;
 
             const wasEnabled = imageDownloadSettings.detectionEnabled;
+            const previousQualityMode = imageDownloadSettings.qualityMode;
             imageDownloadSettings = normalizeImageDownloadSettings(changes.imageDownloadSettings.newValue);
             applyImageDownloadSettings();
 
             if (!imageDownloadSettings.detectionEnabled) {
                 removeInjectedDownloadControls();
                 return;
+            }
+
+            if (!wasEnabled || previousQualityMode !== imageDownloadSettings.qualityMode) {
+                removeInjectedDownloadControls();
             }
 
             if (!wasEnabled || imageDownloadSettings.detectionEnabled) {
@@ -1901,31 +1989,299 @@
 
         const indicator = document.createElement('div');
         indicator.id = 'amazon-rufus-scraper-indicator';
-        indicator.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, #2563eb, #10b981);
-            color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            z-index: 999999;
-            opacity: 0.9;
-            transition: opacity 0.3s;
+        const shadow = indicator.attachShadow({ mode: 'open' });
+        shadow.innerHTML = `
+            <style>
+                :host {
+                    position: fixed;
+                    right: 18px;
+                    bottom: 18px;
+                    z-index: 999999;
+                    color: #111827;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    font-size: 13px;
+                    line-height: 1.35;
+                    letter-spacing: 0;
+                }
+
+                *, *::before, *::after {
+                    box-sizing: border-box;
+                }
+
+                button, select, input {
+                    font: inherit;
+                    letter-spacing: 0;
+                }
+
+                #launcher {
+                    position: relative;
+                    width: 42px;
+                    height: 42px;
+                    border: 1px solid rgba(255, 255, 255, 0.82);
+                    border-radius: 8px;
+                    background: #1d4ed8;
+                    color: #fff;
+                    box-shadow: 0 5px 18px rgba(15, 23, 42, 0.28);
+                    cursor: pointer;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0;
+                    transition: background-color 0.14s ease, box-shadow 0.14s ease;
+                }
+
+                #launcher:hover {
+                    background: #1e40af;
+                    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.34);
+                }
+
+                #launcher:focus-visible,
+                button:focus-visible,
+                select:focus-visible,
+                input:focus-visible {
+                    outline: 2px solid #f59e0b;
+                    outline-offset: 2px;
+                }
+
+                .mark {
+                    font-size: 18px;
+                    font-weight: 800;
+                }
+
+                .ready-dot {
+                    position: absolute;
+                    right: 4px;
+                    bottom: 4px;
+                    width: 8px;
+                    height: 8px;
+                    border: 2px solid #1d4ed8;
+                    border-radius: 50%;
+                    background: #22c55e;
+                }
+
+                #panel {
+                    position: absolute;
+                    right: 0;
+                    bottom: 50px;
+                    width: 264px;
+                    padding: 12px;
+                    border: 1px solid #dbe2ea;
+                    border-radius: 8px;
+                    background: #fff;
+                    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
+                }
+
+                #panel[hidden] {
+                    display: none;
+                }
+
+                .panel-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding-bottom: 9px;
+                    border-bottom: 1px solid #e5e7eb;
+                }
+
+                .panel-title {
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+
+                #close {
+                    width: 28px;
+                    height: 28px;
+                    border: 0;
+                    border-radius: 5px;
+                    background: transparent;
+                    color: #64748b;
+                    cursor: pointer;
+                    font-size: 18px;
+                    line-height: 1;
+                }
+
+                #close:hover {
+                    background: #f1f5f9;
+                    color: #0f172a;
+                }
+
+                .setting-row {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) 116px;
+                    gap: 10px;
+                    align-items: center;
+                    min-height: 42px;
+                    border-bottom: 1px solid #eef2f7;
+                }
+
+                .setting-row:last-of-type {
+                    border-bottom: 0;
+                }
+
+                .setting-label {
+                    color: #334155;
+                    font-weight: 600;
+                }
+
+                select {
+                    width: 116px;
+                    height: 30px;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 5px;
+                    background: #fff;
+                    color: #0f172a;
+                    padding: 0 7px;
+                    cursor: pointer;
+                }
+
+                .switch {
+                    justify-self: end;
+                    position: relative;
+                    width: 38px;
+                    height: 22px;
+                }
+
+                .switch input {
+                    position: absolute;
+                    opacity: 0;
+                    width: 1px;
+                    height: 1px;
+                }
+
+                .switch-track {
+                    position: absolute;
+                    inset: 0;
+                    border-radius: 11px;
+                    background: #cbd5e1;
+                    cursor: pointer;
+                    transition: background-color 0.14s ease;
+                }
+
+                .switch-track::after {
+                    content: "";
+                    position: absolute;
+                    top: 3px;
+                    left: 3px;
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    background: #fff;
+                    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+                    transition: transform 0.14s ease;
+                }
+
+                .switch input:checked + .switch-track {
+                    background: #2563eb;
+                }
+
+                .switch input:checked + .switch-track::after {
+                    transform: translateX(16px);
+                }
+
+                .switch input:focus-visible + .switch-track {
+                    outline: 2px solid #f59e0b;
+                    outline-offset: 2px;
+                }
+
+                #summary {
+                    margin-top: 8px;
+                    color: #64748b;
+                    font-size: 12px;
+                }
+            </style>
+            <button id="launcher" type="button" title="alexai 页面下载设置" aria-label="打开 alexai 页面下载设置" aria-expanded="false">
+                <span class="mark">A</span>
+                <span class="ready-dot" aria-hidden="true"></span>
+            </button>
+            <section id="panel" aria-label="页面下载设置" hidden>
+                <div class="panel-header">
+                    <span class="panel-title">页面下载</span>
+                    <button id="close" type="button" title="关闭" aria-label="关闭">&times;</button>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">下载按钮</span>
+                    <label class="switch" title="启用页面图片和视频下载按钮">
+                        <input id="detectionEnabled" type="checkbox">
+                        <span class="switch-track"></span>
+                    </label>
+                </div>
+                <label class="setting-row" for="displayMode">
+                    <span class="setting-label">显示方式</span>
+                    <select id="displayMode">
+                        <option value="hover">悬停显示</option>
+                        <option value="visible">直接显示</option>
+                    </select>
+                </label>
+                <label class="setting-row" for="qualityMode">
+                    <span class="setting-label">图片清晰度</span>
+                    <select id="qualityMode">
+                        <option value="high">仅高清 HD</option>
+                        <option value="both">高清 + 标清</option>
+                    </select>
+                </label>
+                <div id="summary" aria-live="polite"></div>
+            </section>
         `;
-        indicator.textContent = 'alexai Ready';
 
+        const launcher = shadow.getElementById('launcher');
+        const panel = shadow.getElementById('panel');
+        const closeButton = shadow.getElementById('close');
+        const detectionEnabled = shadow.getElementById('detectionEnabled');
+        const displayMode = shadow.getElementById('displayMode');
+        const qualityMode = shadow.getElementById('qualityMode');
+        const summary = shadow.getElementById('summary');
+
+        function setPanelOpen(open) {
+            panel.hidden = !open;
+            launcher.setAttribute('aria-expanded', String(open));
+        }
+
+        function syncSettings() {
+            detectionEnabled.checked = imageDownloadSettings.detectionEnabled;
+            displayMode.value = imageDownloadSettings.displayMode;
+            qualityMode.value = imageDownloadSettings.qualityMode;
+            displayMode.disabled = !imageDownloadSettings.detectionEnabled;
+            qualityMode.disabled = !imageDownloadSettings.detectionEnabled;
+
+            if (!imageDownloadSettings.detectionEnabled) {
+                summary.textContent = '页面下载按钮已关闭';
+                return;
+            }
+
+            const displayText = imageDownloadSettings.displayMode === 'hover' ? '悬停显示' : '直接显示';
+            const qualityText = imageDownloadSettings.qualityMode === 'high' ? '仅高清' : '高清和标清';
+            summary.textContent = `${displayText}，${qualityText}`;
+        }
+
+        async function saveSettings(changes) {
+            const nextSettings = normalizeImageDownloadSettings({
+                ...imageDownloadSettings,
+                ...changes
+            });
+            await chrome.storage.local.set({ imageDownloadSettings: nextSettings });
+        }
+
+        launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
+        closeButton.addEventListener('click', () => setPanelOpen(false));
+        detectionEnabled.addEventListener('change', () => saveSettings({ detectionEnabled: detectionEnabled.checked }));
+        displayMode.addEventListener('change', () => saveSettings({ displayMode: displayMode.value }));
+        qualityMode.addEventListener('change', () => saveSettings({ qualityMode: qualityMode.value }));
+
+        document.addEventListener('pointerdown', event => {
+            if (!panel.hidden && !indicator.contains(event.target)) {
+                setPanelOpen(false);
+            }
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !panel.hidden) {
+                setPanelOpen(false);
+                launcher.focus();
+            }
+        });
+
+        syncPageDownloadSettings = syncSettings;
+        syncSettings();
         document.body.appendChild(indicator);
-
-        indicator.addEventListener('mouseenter', () => {
-            indicator.style.opacity = '1';
-        });
-        indicator.addEventListener('mouseleave', () => {
-            indicator.style.opacity = '0.9';
-        });
     }
 
     function observePageChanges() {
@@ -1941,9 +2297,9 @@
 
     function enhancePage() {
         setupImageDownloader();
+        addScrapingIndicator();
 
         if (isProductPage) {
-            addScrapingIndicator();
             observePageChanges();
             window.amazonRufusLastData = extractRufusData();
         }

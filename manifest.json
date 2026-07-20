@@ -55,6 +55,11 @@
     "https://*.media-amazon.com/*",
     "https://*.ssl-images-amazon.com/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
   "web_accessible_resources": [
     {
       "resources": ["content/content.js"],

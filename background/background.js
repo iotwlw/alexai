@@ -61,6 +61,8 @@ let nextLaunchAt = 0;
 let restUntil = 0;
 let processedSinceRest = 0;
 
+const DEFAULT_LINK_INSPECTION_API_URL = 'http://127.0.0.1:8080';
+
 // 随机延迟函数
 function randomDelay(min, max) {
     const rawMin = Number.isFinite(Number(min)) ? Number(min) : 0;
@@ -1327,6 +1329,133 @@ async function downloadAmazonImage(message, sender) {
     return { success: true, downloadId, filename };
 }
 
+function getLinkInspectionEndpoint(apiBaseUrl) {
+    const url = new URL(String(apiBaseUrl || DEFAULT_LINK_INSPECTION_API_URL).trim());
+    const isLocalHttp = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !isLocalHttp) {
+        throw new Error('远程巡查服务必须使用 HTTPS，本机服务可使用 localhost');
+    }
+
+    const normalizedPath = url.pathname.replace(/\/+$/, '');
+    if (normalizedPath.endsWith('/api/asin-inspection')) {
+        url.pathname = normalizedPath;
+    } else if (normalizedPath.endsWith('/api')) {
+        url.pathname = `${normalizedPath}/asin-inspection`;
+    } else {
+        url.pathname = `${normalizedPath}/api/asin-inspection`.replace(/\/+/g, '/');
+    }
+    url.search = '';
+    url.hash = '';
+    return url.href;
+}
+
+function buildLinkInspectionRequestItem(input, domain) {
+    const original = String(input || '').trim();
+    if (!original) return null;
+
+    if (/^[A-Z0-9]{10}$/i.test(original)) {
+        const asin = original.toUpperCase();
+        return {
+            asin,
+            url: `https://${domain}/dp/${asin}`,
+            original
+        };
+    }
+
+    try {
+        const url = new URL(original);
+        return {
+            url: url.href,
+            original
+        };
+    } catch (_) {
+        return { original };
+    }
+}
+
+function normalizeLinkInspectionDomain(value) {
+    const allowedDomains = new Set([
+        'www.amazon.com',
+        'www.amazon.ca',
+        'www.amazon.co.uk',
+        'www.amazon.de',
+        'www.amazon.co.jp'
+    ]);
+    const domain = String(value || '').trim().toLowerCase();
+    return allowedDomains.has(domain) ? domain : 'www.amazon.com';
+}
+
+async function runLinkInspection(message) {
+    const inputs = Array.isArray(message.inputs)
+        ? message.inputs.map(value => String(value || '').trim()).filter(Boolean)
+        : [];
+    if (!inputs.length) {
+        throw new Error('请先输入链接或 ASIN');
+    }
+    if (inputs.length > 50) {
+        throw new Error('单次最多巡查 50 条');
+    }
+
+    const stored = await chrome.storage.local.get('linkInspectionSettings');
+    const settings = stored.linkInspectionSettings || {};
+    const licenseCode = String(settings.licenseCode || '').trim();
+    if (!licenseCode) {
+        throw new Error('链接巡查需要有效授权码');
+    }
+
+    const domain = normalizeLinkInspectionDomain(message.domain || settings.domain);
+    const endpoint = getLinkInspectionEndpoint(settings.apiBaseUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Crawler-Token': licenseCode
+            },
+            body: JSON.stringify({
+                job_id: `alexai-${Date.now()}`,
+                domain,
+                items: inputs.map(input => buildLinkInspectionRequestItem(input, domain)).filter(Boolean),
+                options: {
+                    include_offer: true,
+                    include_seller: true
+                }
+            }),
+            cache: 'no-store',
+            signal: controller.signal
+        });
+
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_) {
+            // The status-specific error below is more useful than a JSON parse error.
+        }
+
+        if (response.status === 401 || response.status === 403) {
+            throw new Error('授权码无效、已过期或已被停用');
+        }
+        if (!response.ok) {
+            throw new Error(payload?.message || `巡查服务请求失败（HTTP ${response.status}）`);
+        }
+        if (payload?.code !== 0 || !payload?.data) {
+            throw new Error(payload?.message || '巡查服务返回了无效数据');
+        }
+
+        return { success: true, data: payload.data };
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error('巡查服务响应超时');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 // 消息监听
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.action) {
@@ -1363,6 +1492,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'downloadAmazonImage':
             downloadAmazonImage(message, sender)
+                .then(result => sendResponse(result))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
+
+        case 'runLinkInspection':
+            runLinkInspection(message)
                 .then(result => sendResponse(result))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;

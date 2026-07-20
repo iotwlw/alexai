@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>alexai 功能与交互优化修改记录</title>
+    <style>
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            background: #f4f6f8;
+            color: #182033;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+            font-size: 15px;
+            line-height: 1.7;
+            letter-spacing: 0;
+        }
+        a { color: #1d4ed8; }
+        code {
+            padding: 2px 5px;
+            border-radius: 4px;
+            background: #edf1f5;
+            color: #263248;
+            font-family: Consolas, "SFMono-Regular", monospace;
+            font-size: 0.9em;
+        }
+        .page {
+            width: min(1120px, calc(100% - 32px));
+            margin: 24px auto 64px;
+            background: #fff;
+            box-shadow: 0 12px 36px rgba(24, 32, 51, 0.1);
+        }
+        .hero {
+            min-height: 250px;
+            padding: 44px 52px 38px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 28px;
+            align-items: end;
+            border-bottom: 4px solid #2563eb;
+            background: #172033;
+            color: #fff;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 28px;
+            color: #cbd5e1;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .brand img {
+            width: 38px;
+            height: 38px;
+            border-radius: 7px;
+        }
+        h1, h2, h3 { margin: 0; letter-spacing: 0; }
+        h1 {
+            max-width: 760px;
+            font-size: 38px;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .hero p {
+            max-width: 720px;
+            margin: 15px 0 0;
+            color: #cbd5e1;
+            font-size: 16px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .hero-meta {
+            min-width: 180px;
+            padding-left: 24px;
+            border-left: 1px solid #475569;
+        }
+        .hero-meta span {
+            display: block;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+        .hero-meta strong {
+            display: block;
+            margin-top: 3px;
+            font-size: 15px;
+        }
+        .content { padding: 0 52px 48px; }
+        .summary-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            border-bottom: 1px solid #dfe5ec;
+        }
+        .summary-item {
+            padding: 24px 20px 22px 0;
+        }
+        .summary-item + .summary-item {
+            padding-left: 24px;
+            border-left: 1px solid #dfe5ec;
+        }
+        .summary-item strong {
+            display: block;
+            color: #172033;
+            font-size: 24px;
+            line-height: 1.2;
+        }
+        .summary-item span {
+            display: block;
+            margin-top: 5px;
+            color: #64748b;
+            font-size: 13px;
+        }
+        section {
+            padding: 34px 0 4px;
+        }
+        section + section {
+            margin-top: 26px;
+            border-top: 1px solid #dfe5ec;
+        }
+        h2 {
+            margin-bottom: 14px;
+            font-size: 23px;
+        }
+        h3 {
+            margin: 25px 0 8px;
+            font-size: 17px;
+        }
+        p { margin: 8px 0; }
+        .lead { color: #475569; }
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .status.done { background: #dcfce7; color: #17603f; }
+        .status.pro { background: #fff1c7; color: #8a5200; }
+        .status.note { background: #e8efff; color: #1d4ed8; }
+        table {
+            width: 100%;
+            margin: 16px 0 6px;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        th, td {
+            padding: 12px 13px;
+            border-bottom: 1px solid #dfe5ec;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        th {
+            background: #f7f9fb;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        td { font-size: 14px; }
+        .requirement-table th:first-child { width: 52px; }
+        .requirement-table th:nth-child(2) { width: 27%; }
+        .requirement-table th:last-child { width: 94px; }
+        .change-list {
+            margin: 13px 0 0;
+            padding: 0;
+            list-style: none;
+        }
+        .change-list li {
+            position: relative;
+            padding: 9px 0 9px 24px;
+            border-bottom: 1px solid #eef2f6;
+        }
+        .change-list li::before {
+            content: "";
+            position: absolute;
+            left: 3px;
+            top: 18px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #2563eb;
+        }
+        .logic-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0 30px;
+            margin-top: 12px;
+        }
+        .logic-block {
+            padding: 14px 0;
+            border-top: 2px solid #dfe5ec;
+        }
+        .logic-block strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+        .logic-block p {
+            margin: 0;
+            color: #526079;
+            font-size: 14px;
+        }
+        .flow {
+            margin: 18px 0;
+            padding: 18px 20px;
+            overflow-x: auto;
+            border-left: 3px solid #2563eb;
+            background: #f6f8fb;
+            color: #334155;
+            font-family: Consolas, "SFMono-Regular", monospace;
+            font-size: 13px;
+            white-space: pre;
+        }
+        .callout {
+            margin-top: 18px;
+            padding: 15px 17px;
+            border-left: 3px solid #d97706;
+            background: #fff9ec;
+            color: #694617;
+        }
+        .callout strong { display: block; margin-bottom: 4px; }
+        .verification td:first-child { width: 34%; }
+        footer {
+            padding: 22px 52px;
+            border-top: 1px solid #dfe5ec;
+            background: #f7f9fb;
+            color: #64748b;
+            font-size: 13px;
+        }
+        @media (max-width: 760px) {
+            .page { width: 100%; margin: 0; box-shadow: none; }
+            .hero { min-height: 0; padding: 30px 22px; grid-template-columns: 1fr; }
+            h1 { font-size: 30px; word-break: break-all; }
+            .hero-meta { padding: 18px 0 0; border: 0; border-top: 1px solid #475569; }
+            .content { padding: 0 22px 36px; }
+            .summary-strip { grid-template-columns: 1fr; }
+            .summary-item + .summary-item { padding-left: 0; border-left: 0; border-top: 1px solid #dfe5ec; }
+            .logic-grid { grid-template-columns: 1fr; }
+            table { table-layout: auto; }
+            .table-wrap { overflow-x: auto; }
+            footer { padding: 20px 22px; }
+        }
+    </style>
+</head>
+<body>
+    <article class="page">
+        <header class="hero">
+            <div>
+                <div class="brand"><img src="../icons/icon48.png" alt="alexai"> alexai / 修改记录</div>
+                <h1>图片、视频与链接巡查交互优化</h1>
+                <p>基于现有 Manifest V3 扩展完成页面下载设置、视频入口强化、专业版链接巡查和 Popup 信息架构重整。</p>
+            </div>
+            <div class="hero-meta">
+                <span>记录日期</span>
+                <strong>2026-07-20</strong>
+                <span style="margin-top: 13px;">基线版本</span>
+                <strong>alexai v1.0.0</strong>
+            </div>
+        </header>
+
+        <div class="content">
+            <div class="summary-strip">
+                <div class="summary-item"><strong>5</strong><span>项明确需求逐项落地</span></div>
+                <div class="summary-item"><strong>3 层</strong><span>Popup、Background、Content 职责分离</span></div>
+                <div class="summary-item"><strong>0</strong><span>悬停模式新增 JavaScript 扫描任务</span></div>
+            </div>
+
+            <section id="overview">
+                <h2>需求完成情况</h2>
+                <p class="lead">每项需求都映射到明确的实现证据和行为结果。</p>
+                <div class="table-wrap">
+                    <table class="requirement-table">
+                        <thead><tr><th>#</th><th>需求</th><th>实现结果</th><th>状态</th></tr></thead>
+                        <tbody>
+                            <tr><td>1</td><td>图片按钮支持直接/悬停显示；默认只显示高清；高清/标清可配置</td><td>新增 <code>displayMode</code> 与 <code>qualityMode</code>，默认 <code>hover + high</code>，仅在需要时创建 SD 按钮。</td><td><span class="status done">已完成</span></td></tr>
+                            <tr><td>2</td><td>大幅视频位置的下载图标更容易发现</td><td>按视频宿主选择器与尺寸识别大视频，将 40x24 的 VID 入口升级为 88x38 的“下载视频”。</td><td><span class="status done">已完成</span></td></tr>
+                            <tr><td>3</td><td>链接巡查作为高级版，授权后才能使用</td><td>增加 PRO 工作区、授权码门槛、可选网络权限和服务端令牌验证，复用 <code>amazon-crawler</code> API。</td><td><span class="status pro">专业版</span></td></tr>
+                            <tr><td>4</td><td>优化用户交互和设计，更简洁清晰</td><td>Popup 改为两个工作模式，任务设置分层，主操作、状态与导出区职责清楚。</td><td><span class="status done">已完成</span></td></tr>
+                            <tr><td>5</td><td>图片下载设置可在页面小图标位置设置</td><td>右下角 <code>A</code> 入口使用 Shadow DOM，直接同步下载开关、显示方式和清晰度。</td><td><span class="status done">已完成</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="images">
+                <h2>1. 图片下载按钮</h2>
+                <p>原实现固定创建大图和缩略图两个按钮，并用“直接显示 / 不显示”控制。新实现把“何时显示”和“显示哪些清晰度”拆成两个独立设置。</p>
+                <div class="logic-grid">
+                    <div class="logic-block"><strong>默认策略</strong><p><code>displayMode: hover</code>、<code>qualityMode: high</code>。默认页面更安静，只在悬停图片时出现 HD；大幅视频入口保持可见。</p></div>
+                    <div class="logic-block"><strong>性能逻辑</strong><p>悬停使用根节点 class 与 CSS <code>:hover/:focus-within</code>，不为每张图片增加 mouseenter/mouseleave 监听。</p></div>
+                    <div class="logic-block"><strong>节点控制</strong><p>仅高清模式不会创建 SD 按钮；切换到“高清 + 标清”后才重建需要的控件。</p></div>
+                    <div class="logic-block"><strong>旧设置迁移</strong><p>历史 <code>hidden</code> 设置自动映射为 <code>hover</code>，避免升级后按钮永久不可见。</p></div>
+                </div>
+                <ul class="change-list">
+                    <li><code>HD</code> 使用现有高分辨率候选解析逻辑，选择实际可加载的较大图片。</li>
+                    <li><code>SD</code> 使用页面当前 <code>currentSrc/src/data-src</code>，不执行放大。</li>
+                    <li>图片按钮仍为绝对定位，不改变 Amazon 图片容器尺寸和页面布局。</li>
+                    <li>Popup 与页面小图标写入同一个 <code>imageDownloadSettings</code>，不存在两套状态。</li>
+                </ul>
+            </section>
+
+            <section id="videos">
+                <h2>2. 大幅视频下载入口</h2>
+                <p>小视频和缩略卡继续使用紧凑的 <code>VID</code>；大幅视频根据明确的 hero 宿主选择器，或宽度至少 360px 且高度至少 180px 的尺寸规则识别。</p>
+                <div class="flow">视频宿主匹配
+    -> 大幅视频？
+       -> 是：88 x 38，显示“下载视频”
+       -> 否：保留紧凑 VID
+    -> 下载中：统一显示进度或省略号
+    -> 完成：恢复对应宿主的原标签</div>
+                <p>这样提高主视频入口的发现率，同时避免每个缩略视频按钮都变大并遮挡内容。</p>
+            </section>
+
+            <section id="inspection">
+                <h2>3. 链接巡查专业版</h2>
+                <p>没有在扩展中重新实现 Amazon 巡查爬虫，而是复用成熟的 <code>D:\AmazonCode\amazon-crawler</code> HTTP API。</p>
+                <div class="flow">Popup 输入链接与授权码
+    -> 请求目标服务的可选 host permission
+    -> Background 从 chrome.storage.local 读取授权码
+    -> POST /api/asin-inspection
+       Header: X-Crawler-Token
+    -> 服务端验证授权并执行巡查
+    -> Popup 展示并导出 CSV / JSON</div>
+                <div class="logic-grid">
+                    <div class="logic-block"><strong>授权门槛</strong><p>没有授权码时 Background 拒绝请求；401/403 会显示“无效、过期或停用”，并撤销本地已验证状态。</p></div>
+                    <div class="logic-block"><strong>网络边界</strong><p>HTTP 只允许 <code>localhost</code> 和 <code>127.0.0.1</code>；远程服务必须使用 HTTPS。</p></div>
+                    <div class="logic-block"><strong>输入边界</strong><p>单次最多 50 条，与现有 API 限制一致；保留输入顺序和重复项。</p></div>
+                    <div class="logic-block"><strong>隐私边界</strong><p>只提交用户明确输入的巡查链接、站点和授权码，不上传 Amazon Cookie 或现有抓取结果。</p></div>
+                </div>
+                <div class="callout">
+                    <strong>生产部署前必须完成</strong>
+                    <span><code>amazon-crawler</code> 服务端必须设置 <code>CRAWLER_API_TOKEN</code>，否则其当前 API 会接受任意请求。扩展默认连接 <code>http://127.0.0.1:8080</code>；对外发布时应填写实际 HTTPS 服务地址。</span>
+                </div>
+            </section>
+
+            <section id="interaction">
+                <h2>4. 交互与信息架构</h2>
+                <ul class="change-list">
+                    <li>Popup 顶部保留品牌、版本和当前免费版/专业版状态。</li>
+                    <li>“Alexa / Rufus 抓取”和“链接巡查 PRO”使用明确的模式标签，避免两套任务混在同一个表单。</li>
+                    <li>抓取设置作为可折叠次级区域，输入与开始按钮保持主路径。</li>
+                    <li>状态、统计和导出集中在右侧上下文区，减少视线往返。</li>
+                    <li>去除装饰性渐变和大量 Emoji，用单一蓝色主操作、绿色成功、琥珀色专业版状态建立一致层级。</li>
+                    <li>按钮、输入框和固定格式控件都有稳定尺寸，任务状态变化不会导致布局跳动。</li>
+                </ul>
+            </section>
+
+            <section id="page-control">
+                <h2>5. 页面小图标设置</h2>
+                <p>原来的 <code>alexai Ready</code> 状态块改为 42x42 的 <code>A</code> 品牌入口，搜索页和商品详情页均可使用。</p>
+                <div class="logic-grid">
+                    <div class="logic-block"><strong>样式隔离</strong><p>面板使用 Shadow DOM，Amazon 页面 CSS 不会改变开关、选择器和按钮尺寸。</p></div>
+                    <div class="logic-block"><strong>同步方式</strong><p>所有设置写入 <code>chrome.storage.local</code>，现有 storage change 监听即时刷新页面控件。</p></div>
+                    <div class="logic-block"><strong>可访问性</strong><p>支持键盘焦点、<code>Esc</code> 关闭、ARIA 标签和 <code>:focus-visible</code>。</p></div>
+                    <div class="logic-block"><strong>页面干扰</strong><p>面板默认关闭，只保留小图标；点击外部自动收起，不持续占用 Amazon 内容区域。</p></div>
+                </div>
+            </section>
+
+            <section id="files">
+                <h2>文件级修改记录</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>文件</th><th>修改逻辑</th><th>修改原因</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>content/content.js</code></td><td>扩展图片设置模型、CSS 悬停、按需 SD 控件、大视频入口、Shadow DOM 页面设置。</td><td>完成页面侧下载交互并控制性能成本。</td></tr>
+                            <tr><td><code>popup/popup.html</code></td><td>改为双工作模式，新增 PRO 授权、巡查输入、结果和导出结构。</td><td>把普通抓取与高级巡查分开，降低理解成本。</td></tr>
+                            <tr><td><code>popup/popup.css</code></td><td>重建工具型视觉层级、稳定控件尺寸、表格和授权状态。</td><td>提高扫描效率，减少卡片和装饰噪音。</td></tr>
+                            <tr><td><code>popup/popup.js</code></td><td>同步新图片设置、工作区切换、授权状态、可选权限、API 调用结果和巡查导出。</td><td>保持单一状态源并完成专业版交互闭环。</td></tr>
+                            <tr><td><code>background/background.js</code></td><td>校验服务地址、读取授权码、构建 API 请求、处理超时与授权失败。</td><td>将令牌和跨域调用集中在可信的 Background 边界。</td></tr>
+                            <tr><td><code>manifest.json</code></td><td>声明 HTTPS 与本机巡查服务为可选 host permission。</td><td>仅在用户实际运行巡查时申请权限，避免默认扩大授权面。</td></tr>
+                            <tr><td><code>README.md</code>、<code>PROJECT_DOCUMENTATION.md</code>、模块文档</td><td>同步新按钮名称、默认行为、专业版 API 和风险边界。</td><td>避免文档继续描述旧的 DL/XL 和直接显示行为。</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="verification">
+                <h2>验证记录</h2>
+                <div class="table-wrap">
+                    <table class="verification">
+                        <thead><tr><th>检查</th><th>结果</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>node --check content\content.js</code></td><td><span class="status done">通过</span></td></tr>
+                            <tr><td><code>node --check popup\popup.js</code></td><td><span class="status done">通过</span></td></tr>
+                            <tr><td><code>node --check background\background.js</code></td><td><span class="status done">通过</span></td></tr>
+                            <tr><td><code>JSON.parse(manifest.json)</code></td><td><span class="status done">通过</span></td></tr>
+                            <tr><td>Popup JavaScript 引用的 DOM ID</td><td><span class="status done">全部存在</span></td></tr>
+                            <tr><td>Popup 与修改记录 HTML 的 Headless 浏览器静态渲染</td><td><span class="status done">无空白、重叠或横向溢出</span></td></tr>
+                            <tr><td>Popup 工作模式切换</td><td><span class="status done">抓取 / 链接巡查状态切换正常</span></td></tr>
+                            <tr><td>真实 Chrome 扩展页面与 Amazon DOM 手动验证</td><td><span class="status note">加载扩展后执行</span></td></tr>
+                            <tr><td>远程生产巡查 API</td><td><span class="status note">需要实际 HTTPS 地址与有效授权码</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <footer>
+            本记录只描述本次需求相关修改。扩展仍不绕过 Amazon 登录、验证码、访问频率、地区或权限控制。
+        </footer>
+    </article>
+</body>
+</html>
