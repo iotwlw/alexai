@@ -10,7 +10,7 @@
 | Alexa for Shopping 抓取 | 提取 Alexa for Shopping/Rufus 区块中的 5 个推荐问题/提示 |
 | 商品上下文 | 同时导出 ASIN、商品标题、品牌、评分、评价数 |
 | High Price 检查 | 检测 Amazon 页面展示的 `High price` 等价格提示；该信息通常依赖本机浏览器已登录 Amazon 账号 |
-| 商品图下载 | 在搜索结果页和详情页给商品图添加 `DL` 大图按钮和 `XL` 当前缩略图按钮；详情页也支持点击商品图下载较大尺寸版本 |
+| 商品图下载 | 在搜索结果页和详情页给商品图添加 `DL` 大图按钮和 `XL` 当前缩略图按钮 |
 | 商品视频下载 | 在商品详情页识别 Amazon VSE/Product Videos 和已渲染的 Amazon `<video>`，给视频画面添加 `VID` 下载按钮，并支持 HLS/m3u8 分片合并下载 |
 | 队列管理 | 支持 2-5 个后台窗口动态并发、暂停、继续、停止 |
 | 防检测 | 窗口补位随机延迟、模拟滚动、批次休息 |
@@ -37,14 +37,14 @@ B0D2R3KRFN
 
 抓取时会动态保持 2-5 个后台窗口。单个窗口一旦提取到 Alexa for Shopping/Rufus 或商品上下文数据，会立即关闭，不再等待页面完全加载；随后按设置的随机延迟补充新的窗口。
 
-在 Amazon 搜索页（例如 `https://www.amazon.com/s?k=entertainment+center+for+living+room`），每个搜索结果主图右侧外沿会显示 `DL` 和 `XL` 按钮。`DL` 下载较大尺寸版本，`XL` 下载页面当前使用的缩略图。在商品详情页，商品图、高级 A+ 图和 `Reviews with images` 评价图也会显示这两个按钮，也可以直接点击商品图触发大图下载。按钮默认直接显示，也可以在 Popup 中切换为不显示；当大图右侧没有足够可视空间时，按钮会自动贴到图片右内缘，避免完全消失。
+在 Amazon 搜索页（例如 `https://www.amazon.com/s?k=entertainment+center+for+living+room`），每个搜索结果主图右侧外沿会显示 `DL` 和 `XL` 按钮。`DL` 下载较大尺寸版本，`XL` 下载页面当前使用的缩略图。在商品详情页，商品图、高级 A+ 图和 `Reviews with images` 评价图也会显示这两个按钮。按钮默认直接显示，也可以在 Popup 中切换为不显示；当大图右侧没有足够可视空间时，按钮会自动贴到图片右内缘，避免完全消失。
 
 Popup 的“抓取设置”中可以调整图片下载按钮：
 
 - 取消勾选“图片检测”：关闭页面图片/视频检测，不再显示 `DL`、`XL`、`VID` 按钮。
 - “按钮显示”：可选择“直接显示”或“不显示”；默认直接显示。“不显示”只隐藏按钮和商品图点击下载，仍可保留检测开关状态。
 
-在 Amazon 商品详情页的 Product Videos / Videos for this product，以及 Similar brands on Amazon 这类 Sponsored 视频区域，能精确匹配到的视频画面右下角会显示 `VID` 按钮。点击后会选择 m3u8 中最高分辨率的媒体列表，或直接下载 MP4/WebM 文件。
+在 Amazon 商品详情页的 Product Videos / Videos for this product，以及 Similar brands on Amazon 这类 Sponsored 视频区域，能精确匹配到的视频画面右下角会显示 `VID` 按钮。同一视频同时出现在顶部主图缩略栏和 Product Videos 时，会优先给 Product Videos 的大视频画面加按钮；如果页面实验导致卡片无法精确匹配，会在 Product Videos 区域标题下方生成备用 `VID` 按钮。点击后会选择 m3u8 中最高分辨率的媒体列表，或直接下载 MP4/WebM 文件。
 
 ## 导出字段
 

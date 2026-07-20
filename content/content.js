@@ -17,7 +17,6 @@
     const imageDownloadButtons = new WeakMap();
     const thumbnailDownloadButtons = new WeakMap();
     const videoDownloadButtons = new WeakMap();
-    const productImageClickHandlers = new WeakMap();
     const videoDownloadButtonGroups = new Map();
     const activeVideoDownloads = new Map();
     let imageDownloadObserver = null;
@@ -284,10 +283,6 @@
                 display: none !important;
             }
 
-            .alexai-image-downloads-hidden .alexai-product-image-downloadable {
-                cursor: inherit !important;
-            }
-
             .alexai-image-download-button.alexai-download-large {
                 top: 0;
                 right: auto;
@@ -338,10 +333,6 @@
                 outline-offset: 1px;
             }
 
-            .alexai-product-image-downloadable {
-                cursor: copy !important;
-            }
-
             #alexai-image-download-toast {
                 position: fixed;
                 right: 18px;
@@ -365,6 +356,33 @@
             #alexai-image-download-toast.is-visible {
                 opacity: 1;
                 transform: translateY(0);
+            }
+
+            #alexai-video-download-panel {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-items: center;
+                margin: 8px 0 12px;
+            }
+
+            #alexai-video-download-panel .alexai-video-panel-button {
+                border: 1px solid #d5d9d9;
+                border-radius: 6px;
+                background: #fff;
+                color: #0f1111;
+                font-size: 12px;
+                font-weight: 700;
+                line-height: 1;
+                padding: 6px 8px;
+                cursor: pointer;
+            }
+
+            #alexai-video-download-panel .alexai-video-panel-button:focus-visible {
+                background: #f7fafa;
+                border-color: #007185;
+                outline: 2px solid #fbbf24;
+                outline-offset: 1px;
             }
 
         `;
@@ -1332,6 +1350,23 @@
         return hasSize && textIsScoped && (hasVideoSignal || hasVideoImage || hasVideoElement || host.matches?.('video, #ive-hero-video-player, #video-outer-container'));
     }
 
+    function getVideoHostPriority(host) {
+        if (!host?.matches) return 0;
+
+        const rect = host.getBoundingClientRect?.() || { width: 0, height: 0 };
+        const areaScore = Math.min((rect.width * rect.height) / 1000, 300);
+        const inProductVideos = Boolean(host.closest?.('#va-related-videos-widget_feature_div, [data-feature-name="va-related-videos-widget"], .vse-video-widget-dp-container'));
+
+        if (host.matches('#ive-hero-video-player')) return 1200 + areaScore;
+        if (inProductVideos) return 900 + areaScore;
+        if (host.matches('li.a-carousel-card.vse-video-card, [class*="vseCarouselItem" i], [class*="vseVideoDataItem" i]')) return 700 + areaScore;
+        if (host.matches('[data-csa-c-media-type="VIDEO"]')) return 600 + areaScore;
+        if (host.matches('#video-outer-container')) return 400 + areaScore;
+        if (host.matches('.videoBlockIngress, [class*="videoThumbnail" i]')) return 100 + areaScore;
+
+        return areaScore;
+    }
+
     function getVideoCandidateHosts() {
         const selectors = [
             '#ive-hero-video-player',
@@ -1359,7 +1394,7 @@
             hosts.push(host);
         });
 
-        return hosts;
+        return hosts.sort((a, b) => getVideoHostPriority(b) - getVideoHostPriority(a));
     }
 
     function hostMatchesVideo(host, video) {
@@ -1440,17 +1475,17 @@
     function attachVideoButtonsToHosts(videos) {
         const hosts = getVideoCandidateHosts();
         const assignedHosts = new Set();
-        let attached = 0;
+        const attachedUrls = new Set();
 
         for (const video of videos) {
             const matchedHost = hosts.find(host => !assignedHosts.has(host) && hostMatchesVideo(host, video));
             if (matchedHost && attachVideoDownloadButton(matchedHost, video)) {
                 assignedHosts.add(matchedHost);
-                attached++;
+                attachedUrls.add(video.url);
             }
         }
 
-        return attached;
+        return attachedUrls;
     }
 
     function isAllowedVideoButtonHost(host) {
@@ -1462,8 +1497,11 @@
             '[class*="style_videoContainer" i]',
             '[class*="vseCarouselItem" i]',
             '[class*="vseVideoDataItem" i]',
+            '[class*="vseVideoImageWrapper" i]',
             '[class*="videoPreviewWrapper" i]',
             '[class*="vftp-hoc-thumbnail-wrapper" i]',
+            '[data-elementid*="thumbnail" i]',
+            '[data-element-id*="thumbnail" i]',
             '.videoBlockIngress',
             '[data-csa-c-media-type="VIDEO"]'
         ].join(',')));
@@ -1482,13 +1520,68 @@
         document.getElementById('alexai-video-download-panel')?.remove();
     }
 
+    function findVideoPanelSection() {
+        return document.querySelector([
+            '#va-related-videos-widget_feature_div',
+            '[data-feature-name="va-related-videos-widget"]',
+            '.vse-video-widget-dp-container',
+            '[class*="vseVideoWidgetContainer" i]',
+            '#videoBlock_feature_div',
+            '#vse-vw-dp-card_DetailPage'
+        ].join(','));
+    }
+
+    function findVideoPanelAnchor(section) {
+        return section?.querySelector?.([
+            '[class*="vseHeroWidgetHeaderBlock" i]',
+            '[class*="vseWidgetHeader" i]',
+            'h2',
+            'h3'
+        ].join(',')) || section?.firstElementChild || section;
+    }
+
+    function renderVideoDownloadPanel(videos, attachedUrls) {
+        const fallbackVideos = videos.filter(video => !attachedUrls?.has?.(video.url));
+        if (!fallbackVideos.length) return;
+
+        const section = findVideoPanelSection();
+        const anchor = findVideoPanelAnchor(section);
+        if (!section || !anchor) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'alexai-video-download-panel';
+
+        fallbackVideos.slice(0, 48).forEach((video, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'alexai-video-panel-button';
+            button.dataset.label = fallbackVideos.length === 1 ? 'VID' : `VID ${index + 1}`;
+            button.textContent = button.dataset.label;
+            button.title = `${video.title || 'Amazon video'}${video.duration ? ` (${video.duration})` : ''}`;
+            button.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                downloadAmazonVideo(video);
+            });
+            registerVideoDownloadButton(video, button);
+            panel.appendChild(button);
+        });
+
+        if (anchor.parentElement) {
+            anchor.insertAdjacentElement('afterend', panel);
+        } else {
+            section.prepend(panel);
+        }
+    }
+
     function enhanceProductVideoDownloads() {
         if (!isProductPage) return;
 
         const videos = extractAmazonVideosFromDocument();
         removeMisplacedVideoButtons();
         removeVideoDownloadPanel();
-        attachVideoButtonsToHosts(videos);
+        const attachedUrls = attachVideoButtonsToHosts(videos);
+        renderVideoDownloadPanel(videos, attachedUrls);
     }
 
     function getDisplayedImageSize(img) {
@@ -1691,36 +1784,6 @@
         ].join(',')));
     }
 
-    function attachProductImageClick(img) {
-        if (
-            img.getAttribute('data-alexai-product-click') === 'true' &&
-            productImageClickHandlers.has(img)
-        ) {
-            return;
-        }
-
-        if (productImageClickHandlers.has(img)) {
-            img.removeEventListener('click', productImageClickHandlers.get(img), true);
-        }
-
-        const handleProductImageClick = event => {
-            if (
-                !isImageDownloadDetectionEnabled() ||
-                imageDownloadSettings.displayMode === 'hidden'
-            ) {
-                return;
-            }
-
-            if (event.target?.closest?.('.alexai-image-download-button')) return;
-            downloadImageForElement(img, getProductImageContext(img));
-        };
-
-        productImageClickHandlers.set(img, handleProductImageClick);
-        img.setAttribute('data-alexai-product-click', 'true');
-        img.classList.add('alexai-product-image-downloadable');
-        img.addEventListener('click', handleProductImageClick, true);
-    }
-
     function enhanceSearchImageDownloads() {
         Array.from(document.querySelectorAll('img.s-image')).forEach(img => {
             if (isSearchResultImage(img)) {
@@ -1749,7 +1812,6 @@
                 if (!isProductDownloadImage(img)) return;
 
                 attachImageDownloadButton(img, () => getProductImageContext(img));
-                attachProductImageClick(img);
             });
     }
 
@@ -1791,18 +1853,8 @@
                 'alexai-image-download-host-edge-inside',
                 'alexai-image-download-host-out-of-view'
             ));
-        document.querySelectorAll('.alexai-product-image-downloadable')
-            .forEach(element => {
-                const handler = productImageClickHandlers.get(element);
-                if (handler) {
-                    element.removeEventListener('click', handler, true);
-                    productImageClickHandlers.delete(element);
-                }
-
-                element.classList.remove('alexai-product-image-downloadable');
-                element.removeAttribute('data-alexai-product-click');
-                element.removeAttribute('data-alexai-download-busy');
-            });
+        document.querySelectorAll('[data-alexai-download-busy="true"]')
+            .forEach(element => element.removeAttribute('data-alexai-download-busy'));
         videoDownloadButtonGroups.clear();
     }
 

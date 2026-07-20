@@ -12,7 +12,7 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 - 提取价格标识：例如 Amazon `High price`；该信息可能依赖本机 Amazon 登录状态、地区、账号画像和页面实验
 - 提取 Alexa for Shopping/Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
 - 支持 Amazon 搜索页主图下载：搜索结果主图右侧外沿注入 `DL` 大图按钮和 `XL` 当前缩略图按钮
-- 支持 Amazon 商品详情页图片下载：商品图和 `Reviews with images` 评价图显示 `DL`/`XL` 按钮，并支持直接点击商品图下载较大尺寸图片
+- 支持 Amazon 商品详情页图片下载：商品图、高级 A+ 图和 `Reviews with images` 评价图显示 `DL`/`XL` 按钮
 - 支持 Amazon 商品详情页视频下载：识别 VSE/Product Videos 中的 `videoURL` 和页面已渲染的 Amazon `<video>`，注入 `VID` 按钮，并合并常见 HLS/m3u8 分片
 - 支持 Popup 下载按钮设置：可关闭页面图片/视频检测，也可选择按钮直接显示或不显示
 - 保留动态并发队列、暂停/继续、停止、断点续传、失败重试
@@ -30,7 +30,7 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 ## 图片下载流程
 
 1. Content Script 在 Amazon 搜索页识别 `.s-result-item` 中的主图，并在图片容器右侧外沿注入 `DL` 和 `XL` 按钮。
-2. Content Script 在商品详情页识别商品图区域、高级 A+ 图和 `Reviews with images` 评价图，注入 `DL` 和 `XL` 按钮，并给商品图绑定点击下载事件。
+2. Content Script 在商品详情页识别商品图区域、高级 A+ 图和 `Reviews with images` 评价图，注入 `DL` 和 `XL` 按钮。
 3. 图片右侧外沿空间不足时，Content Script 给图片容器添加内缘兜底 class，把按钮收回到图片右内缘；A+ 轮播中横向不可见的侧边图会隐藏按钮。
 4. 点击下载后，Content Script 从 `data-a-dynamic-image`、`srcset`、`data-old-hires`、`data-src`、`currentSrc`、`src` 提取候选 URL。
 5. 对 Amazon 缩略图 URL 生成无尺寸修饰、`SL2000`、`SL1500` 等高分辨率候选，并用浏览器图片加载结果选择实际可加载尺寸最大的候选。
@@ -43,8 +43,8 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 
 1. Content Script 只在 Amazon 商品详情页扫描 `videoURL`、`videoSrc`、`.m3u8`、`.mp4`、页面 `<video>` 等 Amazon 媒体 URL，过滤 `videopreview` 和 `gandalf_preview` 这类预览片段。
 2. 从同一段 Amazon VSE/Product Videos JSON 上下文或 `<video>` 所在商品卡读取标题、作者、时长和缩略图信息，并用 URL 去重。
-3. Content Script 用视频 URL、asset key、标题、作者或缩略图物理 ID 匹配页面中的真实视频画面，在视频右下角注入 `VID` 按钮。
-4. 如果页面实验导致卡片无法精确匹配，则不注入按钮，避免把下载入口放到错误视频或整块容器上。
+3. Content Script 用视频 URL、asset key、标题、作者或缩略图物理 ID 匹配页面中的真实视频画面，并优先选择 Product Videos 区域的大视频宿主，在视频右下角注入 `VID` 按钮。
+4. 如果页面实验导致卡片无法精确匹配，则在 Product Videos 区域标题下方生成备用 `VID` 按钮，避免完全没有下载入口。
 5. 点击下载后，如果来源是 MP4/WebM，直接 fetch 为 Blob 并触发浏览器下载。
 6. 如果来源是 m3u8，先解析 master playlist，选择最高分辨率/最高带宽的媒体 playlist。
 7. 解析媒体 playlist 后顺序下载 init segment 和媒体分片，合并为本地 Blob；TS 分片保存为 `.ts`，fMP4 分片保存为 `.mp4`。
