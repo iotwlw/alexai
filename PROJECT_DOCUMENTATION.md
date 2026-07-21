@@ -10,12 +10,13 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 - 支持 Amazon 商品页路径：`/dp/{ASIN}`、`/{slug}/dp/{ASIN}`、`/gp/product/{ASIN}`
 - 提取商品上下文：ASIN、标题、品牌、评分、评价数
 - 提取价格标识：例如 Amazon `High price`；该信息可能依赖本机 Amazon 登录状态、地区、账号画像和页面实验
+- 将 Alexa for Shopping/Rufus 批量抓取作为高级版能力：有效授权必须包含 `alexa_scraping` 权益
 - 提取 Alexa for Shopping/Rufus 模块中的 5 个推荐问题/提示，过滤 `Ask something else`
 - 支持 Amazon 搜索页和详情页图片下载：默认只创建高清 `HD` 按钮，可配置同时创建标清 `SD` 按钮
 - 支持页面下载按钮显示策略：可选择直接显示或悬停显示；悬停状态使用 CSS，不增加 DOM 扫描任务
 - 支持页面右下角小图标直接调整图片/视频下载开关、显示方式和图片清晰度
 - 支持 Amazon 商品详情页视频下载：识别 VSE/Product Videos 中的 `videoURL` 和页面已渲染的 Amazon `<video>`，大视频显示更大的下载按钮，并合并常见 HLS/m3u8 分片
-- 支持 Popup 的“链接巡查”专业版模式：授权码通过 `amazon-crawler` API 服务端校验后才能使用
+- 图片和视频下载作为免费能力，不受 Alexa 抓取授权状态影响
 - 保留动态并发队列、暂停/继续、停止、断点续传、失败重试
 - 自动导出 CSV，支持手动导出 JSON
 
@@ -23,10 +24,10 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 
 | 模块 | 职责 |
 |------|------|
-| Popup | Rufus 抓取与链接巡查模式、授权码、URL/ASIN 导入、配置、状态展示和导出 |
-| Background Service Worker | 队列状态、标签页生命周期、动态等待、页面内提取、链接巡查 API 和授权令牌转发 |
+| Popup | Alexa/Rufus 高级抓取授权、URL/ASIN 导入、配置、状态展示和导出 |
+| Background Service Worker | 授权激活与复验、队列状态、标签页生命周期、动态等待和页面内提取 |
 | Content Script | 页面右下角设置入口、备用页面内提取入口、搜索页/详情页图片下载入口、商品视频下载入口、下载按钮设置响应 |
-| Chrome Storage | 保存 URL、配置、下载按钮设置、链接巡查授权状态、进度和结果 |
+| Chrome Storage | 保存 URL、配置、下载按钮设置、Alexa 授权状态与凭据、随机设备 ID、进度和结果 |
 
 ## 图片下载流程
 
@@ -52,27 +53,28 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 7. 解析媒体 playlist 后顺序下载 init segment 和媒体分片，合并为本地 Blob；TS 分片保存为 `.ts`，fMP4 分片保存为 `.mp4`。
 8. 加密 HLS 不做绕过，遇到 `#EXT-X-KEY` 且非 `METHOD=NONE` 时直接报错。
 
-## 链接巡查流程
+## Alexa / Rufus 高级版授权流程
 
-1. 用户在 Popup 的“链接巡查”模式中输入链接或 ASIN，并保存授权码。
-2. Popup 在用户点击开始时请求巡查服务的可选网络权限。
-3. Background 从 `chrome.storage.local` 读取授权码和服务地址，不让 Content Script 接触授权码。
-4. Background 调用 `POST /api/asin-inspection`，携带 `X-Crawler-Token` 和最多 50 条输入。
-5. 服务端返回可售状态、价格、优惠、Choice、新款等结构化结果。
-6. Popup 展示结果并支持 CSV/JSON 导出；服务端返回 401/403 时撤销本地已验证状态。
+1. 用户在 Popup 输入授权码并点击“激活高级版”。
+2. Popup 校验服务地址：正式地址必须为 HTTPS，只有 `localhost` 或 `127.0.0.1` 允许 HTTP，并请求对应的可选网络权限。
+3. Background 生成并持久化随机设备 ID，向 `POST /v1/licenses/activate` 发送授权码、设备 ID 和扩展版本。
+4. Background 拒绝 401/403、过期/撤销状态、设备 ID 不匹配、无效到期时间，以及不包含 `alexa_scraping` 的权益响应。
+5. 激活成功后，Popup 显示专业版状态并开放“开始高级抓取”；授权码只保存在 Background 使用的本地凭据项中，界面只展示尾号。
+6. 每次开始或继续抓取前，Background 都会用已保存凭据重新在线验证。失败时立即锁定 Alexa 抓取，但保留用户输入和既有结果。
+7. 图片和视频下载始终作为免费功能，不读取 Alexa 抓取授权状态。
 
 ## 数据流
 
 1. 用户在 Popup 中输入 URL/ASIN
 2. `popup.js` 标准化为 Amazon 商品 URL
-3. 用户点击开始，Popup 向 Background 发送 `start`
-4. Background 抽取 2-5 个目标并发窗口数并创建后台标签页
-5. Background 不等待页面 `complete`，而是轮询注入 `extractProductRufusData()`
-6. 单页提取到 Alexa for Shopping/Rufus 或商品上下文后立即关闭当前窗口
-7. 调度器按随机延迟补充新窗口，并在 2-5 范围内动态调整目标并发
-8. 结果写入队列数据并保存到 `chrome.storage.local`
-9. Popup 接收进度消息并刷新 UI
-10. 任务完成后自动导出 CSV
+3. 用户点击开始，Popup 先检查缓存授权状态，再向 Background 发送 `start`
+4. Background 重新向授权服务验证 `alexa_scraping` 权益；验证失败时不创建 Amazon 标签页
+5. Background 抽取 2-5 个目标并发窗口数并创建后台标签页
+6. Background 不等待页面 `complete`，而是轮询注入 `extractProductRufusData()`
+7. 单页提取到 Alexa for Shopping/Rufus 或商品上下文后立即关闭当前窗口
+8. 调度器按随机延迟补充新窗口，并在 2-5 范围内动态调整目标并发
+9. 结果写入队列数据并保存到 `chrome.storage.local`
+10. Popup 接收进度消息并刷新 UI，任务完成后自动导出 CSV
 
 ## 导出字段
 
@@ -102,7 +104,9 @@ alexai 是 Chrome Manifest V3 扩展，用于批量抓取 Amazon 商品详情页
 - Amazon 视频通常是 HLS；当前实现合并未加密 VOD 分片，不转码、不封装为标准 MP4。需要标准 MP4 时应在下载后用 ffmpeg 转封装。
 - 已按 `example/Lightdot 4Pack 200W LED Wall Pack Lights.html` 校准真实旧 Rufus 结构：`#dpx-nice-widget-container`、`.small-widget-pill`、`data-dpx-rufus-connect.query`。
 - 过高频率可能触发验证或限制，应保留随机补位延迟和批次休息。
-- 链接巡查的授权强度取决于 `amazon-crawler` 服务端是否配置 `CRAWLER_API_TOKEN`；服务端未配置令牌时，接口本身不会拒绝任意非空授权码。
+- 当前授权 MVP 在开始和继续任务时严格依赖授权服务在线可用，尚未实现离线宽限、签名令牌刷新或设备解绑界面。
+- Chrome 扩展的本地代码和存储可被用户查看或修改，因此 Popup 锁定和本地状态不能构成不可绕过的 DRM；Background 复验用于提高普通使用门槛，更强保护需要服务端高级能力。
+- 授权服务只应处理授权所需字段，不得接收 Amazon Cookie、账号、URL、ASIN 或抓取结果。
 
 ## 免责声明
 

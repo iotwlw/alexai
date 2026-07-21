@@ -61,7 +61,9 @@ let nextLaunchAt = 0;
 let restUntil = 0;
 let processedSinceRest = 0;
 
-const DEFAULT_LINK_INSPECTION_API_URL = 'http://127.0.0.1:8080';
+const DEFAULT_LICENSE_API_URL = 'http://127.0.0.1:8080';
+const ALEXA_SCRAPING_FEATURE = 'alexa_scraping';
+const LICENSE_REQUEST_TIMEOUT_MS = 15000;
 
 // 随机延迟函数
 function randomDelay(min, max) {
@@ -1329,100 +1331,161 @@ async function downloadAmazonImage(message, sender) {
     return { success: true, downloadId, filename };
 }
 
-function getLinkInspectionEndpoint(apiBaseUrl) {
-    const url = new URL(String(apiBaseUrl || DEFAULT_LINK_INSPECTION_API_URL).trim());
+function normalizeLicenseApiUrl(value) {
+    const url = new URL(String(value || DEFAULT_LICENSE_API_URL).trim());
     const isLocalHttp = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
     if (url.protocol !== 'https:' && !isLocalHttp) {
-        throw new Error('远程巡查服务必须使用 HTTPS，本机服务可使用 localhost');
+        throw new Error('正式授权服务必须使用 HTTPS，本机调试可使用 localhost 或 127.0.0.1');
     }
 
+    url.search = '';
+    url.hash = '';
+    return url.href.replace(/\/+$/, '');
+}
+
+function getLicenseActivationEndpoint(apiBaseUrl) {
+    const url = new URL(normalizeLicenseApiUrl(apiBaseUrl));
     const normalizedPath = url.pathname.replace(/\/+$/, '');
-    if (normalizedPath.endsWith('/api/asin-inspection')) {
+    if (normalizedPath.endsWith('/v1/licenses/activate')) {
         url.pathname = normalizedPath;
-    } else if (normalizedPath.endsWith('/api')) {
-        url.pathname = `${normalizedPath}/asin-inspection`;
+    } else if (normalizedPath.endsWith('/v1/licenses')) {
+        url.pathname = `${normalizedPath}/activate`;
     } else {
-        url.pathname = `${normalizedPath}/api/asin-inspection`.replace(/\/+/g, '/');
+        url.pathname = `${normalizedPath}/v1/licenses/activate`.replace(/\/+/g, '/');
     }
     url.search = '';
     url.hash = '';
     return url.href;
 }
 
-function buildLinkInspectionRequestItem(input, domain) {
-    const original = String(input || '').trim();
-    if (!original) return null;
+function getDefaultAlexaLicenseState(apiBaseUrl = DEFAULT_LICENSE_API_URL) {
+    return {
+        apiBaseUrl: normalizeLicenseApiUrl(apiBaseUrl),
+        verified: false,
+        plan: 'free',
+        features: [],
+        expiresAt: '',
+        lastVerifiedAt: '',
+        maskedKey: '',
+        statusMessage: '尚未授权'
+    };
+}
 
-    if (/^[A-Z0-9]{10}$/i.test(original)) {
-        const asin = original.toUpperCase();
-        return {
-            asin,
-            url: `https://${domain}/dp/${asin}`,
-            original
-        };
+function normalizeLicenseFeatures(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value
+        .map(feature => String(feature || '').trim())
+        .filter(Boolean))];
+}
+
+function normalizeLicenseExpiry(value) {
+    if (value === null || value === undefined || value === '') return '';
+
+    let date;
+    if (typeof value === 'number' || /^\d+$/.test(String(value))) {
+        const timestamp = Number(value);
+        date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+    } else {
+        date = new Date(value);
     }
 
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function maskLicenseKey(licenseKey) {
+    const value = String(licenseKey || '').trim();
+    if (!value) return '';
+    return `••••${value.slice(-4)}`;
+}
+
+function createDeviceId() {
+    if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function getAlexaDeviceId() {
+    const stored = await chrome.storage.local.get('alexaDeviceId');
+    if (stored.alexaDeviceId) return String(stored.alexaDeviceId);
+
+    const deviceId = createDeviceId();
+    await chrome.storage.local.set({ alexaDeviceId: deviceId });
+    return deviceId;
+}
+
+async function getStoredAlexaLicenseState() {
+    const stored = await chrome.storage.local.get('alexaLicenseState');
+    const saved = stored.alexaLicenseState || {};
+    let apiBaseUrl = DEFAULT_LICENSE_API_URL;
     try {
-        const url = new URL(original);
-        return {
-            url: url.href,
-            original
-        };
+        apiBaseUrl = normalizeLicenseApiUrl(saved.apiBaseUrl || DEFAULT_LICENSE_API_URL);
     } catch (_) {
-        return { original };
+        // Fall back to the local development endpoint when legacy data is invalid.
     }
+
+    const features = normalizeLicenseFeatures(saved.features);
+    const expiresAt = normalizeLicenseExpiry(saved.expiresAt);
+    const expired = Boolean(expiresAt) && Date.parse(expiresAt) <= Date.now();
+    const verified = saved.verified === true && !expired && features.includes(ALEXA_SCRAPING_FEATURE);
+
+    return {
+        ...getDefaultAlexaLicenseState(apiBaseUrl),
+        verified,
+        plan: verified ? String(saved.plan || 'pro') : 'free',
+        features: verified ? features : [],
+        expiresAt,
+        lastVerifiedAt: String(saved.lastVerifiedAt || ''),
+        maskedKey: String(saved.maskedKey || ''),
+        statusMessage: expired ? '授权已过期，请续期后重新激活' : String(saved.statusMessage || '尚未授权')
+    };
 }
 
-function normalizeLinkInspectionDomain(value) {
-    const allowedDomains = new Set([
-        'www.amazon.com',
-        'www.amazon.ca',
-        'www.amazon.co.uk',
-        'www.amazon.de',
-        'www.amazon.co.jp'
-    ]);
-    const domain = String(value || '').trim().toLowerCase();
-    return allowedDomains.has(domain) ? domain : 'www.amazon.com';
+async function saveInvalidAlexaLicenseState(apiBaseUrl, statusMessage, maskedKey = '') {
+    const license = {
+        ...getDefaultAlexaLicenseState(apiBaseUrl),
+        maskedKey,
+        statusMessage: String(statusMessage || '授权不可用')
+    };
+    await chrome.storage.local.set({ alexaLicenseState: license });
+    return license;
 }
 
-async function runLinkInspection(message) {
-    const inputs = Array.isArray(message.inputs)
-        ? message.inputs.map(value => String(value || '').trim()).filter(Boolean)
-        : [];
-    if (!inputs.length) {
-        throw new Error('请先输入链接或 ASIN');
+function getLicenseResponseData(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.success === false || (payload.code !== undefined && Number(payload.code) !== 0)) {
+        return null;
     }
-    if (inputs.length > 50) {
-        throw new Error('单次最多巡查 50 条');
+    return payload.data && typeof payload.data === 'object' ? payload.data : payload;
+}
+
+async function activateAlexaLicense(licenseKey, apiBaseUrl) {
+    const normalizedKey = String(licenseKey || '').trim();
+    if (!normalizedKey) {
+        throw new Error('请输入授权码');
     }
 
-    const stored = await chrome.storage.local.get('linkInspectionSettings');
-    const settings = stored.linkInspectionSettings || {};
-    const licenseCode = String(settings.licenseCode || '').trim();
-    if (!licenseCode) {
-        throw new Error('链接巡查需要有效授权码');
-    }
-
-    const domain = normalizeLinkInspectionDomain(message.domain || settings.domain);
-    const endpoint = getLinkInspectionEndpoint(settings.apiBaseUrl);
+    const normalizedApiBaseUrl = normalizeLicenseApiUrl(apiBaseUrl);
+    const endpoint = getLicenseActivationEndpoint(normalizedApiBaseUrl);
+    const deviceId = await getAlexaDeviceId();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), LICENSE_REQUEST_TIMEOUT_MS);
 
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'X-Crawler-Token': licenseCode
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                job_id: `alexai-${Date.now()}`,
-                domain,
-                items: inputs.map(input => buildLinkInspectionRequestItem(input, domain)).filter(Boolean),
-                options: {
-                    include_offer: true,
-                    include_seller: true
-                }
+                licenseKey: normalizedKey,
+                deviceId,
+                extensionVersion: chrome.runtime.getManifest().version
             }),
             cache: 'no-store',
             signal: controller.signal
@@ -1439,16 +1502,53 @@ async function runLinkInspection(message) {
             throw new Error('授权码无效、已过期或已被停用');
         }
         if (!response.ok) {
-            throw new Error(payload?.message || `巡查服务请求失败（HTTP ${response.status}）`);
-        }
-        if (payload?.code !== 0 || !payload?.data) {
-            throw new Error(payload?.message || '巡查服务返回了无效数据');
+            throw new Error(payload?.message || payload?.error || `授权服务请求失败（HTTP ${response.status}）`);
         }
 
-        return { success: true, data: payload.data };
+        const licenseData = getLicenseResponseData(payload);
+        if (!licenseData) {
+            throw new Error(payload?.message || payload?.error || '授权服务拒绝了该授权码');
+        }
+
+        const features = normalizeLicenseFeatures(licenseData.features);
+        if (!features.includes(ALEXA_SCRAPING_FEATURE)) {
+            throw new Error('当前授权不包含 Alexa / Rufus 抓取权限');
+        }
+
+        const deniedStatuses = new Set(['revoked', 'inactive', 'expired', 'disabled']);
+        if (deniedStatuses.has(String(licenseData.status || '').toLowerCase())) {
+            throw new Error('授权码无效、已过期或已被停用');
+        }
+
+        const expiresAt = normalizeLicenseExpiry(licenseData.expiresAt);
+        if (licenseData.expiresAt && !expiresAt) {
+            throw new Error('授权服务返回了无效的到期时间');
+        }
+        if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+            throw new Error('授权已过期，请续期后重新激活');
+        }
+        if (licenseData.deviceId && String(licenseData.deviceId) !== deviceId) {
+            throw new Error('授权服务返回的设备信息不匹配');
+        }
+
+        const license = {
+            apiBaseUrl: normalizedApiBaseUrl,
+            verified: true,
+            plan: String(licenseData.plan || 'pro'),
+            features,
+            expiresAt,
+            lastVerifiedAt: new Date().toISOString(),
+            maskedKey: maskLicenseKey(normalizedKey),
+            statusMessage: '高级版已授权'
+        };
+        await chrome.storage.local.set({
+            alexaLicenseCredential: { licenseKey: normalizedKey },
+            alexaLicenseState: license
+        });
+        return license;
     } catch (error) {
         if (error?.name === 'AbortError') {
-            throw new Error('巡查服务响应超时');
+            throw new Error('授权服务响应超时');
         }
         throw error;
     } finally {
@@ -1456,11 +1556,64 @@ async function runLinkInspection(message) {
     }
 }
 
+async function verifyStoredAlexaLicense() {
+    const stored = await chrome.storage.local.get(['alexaLicenseCredential', 'alexaLicenseState']);
+    const licenseKey = String(stored.alexaLicenseCredential?.licenseKey || '').trim();
+    const apiBaseUrl = stored.alexaLicenseState?.apiBaseUrl || DEFAULT_LICENSE_API_URL;
+    const maskedKey = String(stored.alexaLicenseState?.maskedKey || maskLicenseKey(licenseKey));
+    if (!licenseKey) {
+        await saveInvalidAlexaLicenseState(apiBaseUrl, 'Alexa / Rufus 抓取需要有效授权码');
+        throw new Error('Alexa / Rufus 抓取需要有效授权码');
+    }
+
+    try {
+        return await activateAlexaLicense(licenseKey, apiBaseUrl);
+    } catch (error) {
+        await saveInvalidAlexaLicenseState(apiBaseUrl, error.message, maskedKey);
+        throw error;
+    }
+}
+
+async function activateAlexaLicenseFromMessage(licenseKey, apiBaseUrl) {
+    try {
+        return await activateAlexaLicense(licenseKey, apiBaseUrl);
+    } catch (error) {
+        const stored = await chrome.storage.local.get(['alexaLicenseCredential', 'alexaLicenseState']);
+        const savedKey = String(stored.alexaLicenseCredential?.licenseKey || '').trim();
+        const attemptedKey = String(licenseKey || '').trim();
+        if (savedKey && savedKey === attemptedKey) {
+            const savedApiBaseUrl = stored.alexaLicenseState?.apiBaseUrl || apiBaseUrl || DEFAULT_LICENSE_API_URL;
+            await saveInvalidAlexaLicenseState(savedApiBaseUrl, error.message, maskLicenseKey(savedKey));
+        }
+        throw error;
+    }
+}
+
+async function updateAlexaLicenseApiUrl(apiBaseUrl) {
+    const normalizedApiBaseUrl = normalizeLicenseApiUrl(apiBaseUrl);
+    const previous = await getStoredAlexaLicenseState();
+    return saveInvalidAlexaLicenseState(
+        normalizedApiBaseUrl,
+        '授权服务地址已更新，请重新激活',
+        previous.maskedKey
+    );
+}
+
+async function clearAlexaLicense() {
+    const previous = await getStoredAlexaLicenseState();
+    const license = getDefaultAlexaLicenseState(previous.apiBaseUrl);
+    license.statusMessage = '授权已移除';
+    await chrome.storage.local.remove(['alexaLicenseCredential']);
+    await chrome.storage.local.set({ alexaLicenseState: license });
+    return license;
+}
+
 // 消息监听
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.action) {
         case 'start':
-            startScraping(message.urls, message.config, message.isNewTask)
+            verifyStoredAlexaLicense()
+                .then(() => startScraping(message.urls, message.config, message.isNewTask))
                 .then(() => sendResponse({ success: true }))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
@@ -1472,7 +1625,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
 
         case 'resume':
-            resumeScraping()
+            verifyStoredAlexaLicense()
+                .then(() => resumeScraping())
                 .then(() => sendResponse({ success: true }))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
@@ -1496,9 +1650,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
 
-        case 'runLinkInspection':
-            runLinkInspection(message)
-                .then(result => sendResponse(result))
+        case 'activateAlexaLicense':
+            activateAlexaLicenseFromMessage(message.licenseKey, message.apiBaseUrl)
+                .then(license => sendResponse({ success: true, license }))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
+
+        case 'getAlexaLicenseStatus':
+            getStoredAlexaLicenseState()
+                .then(license => sendResponse({ success: true, license }))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
+
+        case 'updateAlexaLicenseApiUrl':
+            updateAlexaLicenseApiUrl(message.apiBaseUrl)
+                .then(license => sendResponse({ success: true, license }))
+                .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
+
+        case 'clearAlexaLicense':
+            clearAlexaLicense()
+                .then(license => sendResponse({ success: true, license }))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
 

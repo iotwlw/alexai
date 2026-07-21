@@ -4,6 +4,10 @@
     box-sizing: border-box;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 :root {
     --primary: #2563eb;
     --primary-hover: #1d4ed8;
@@ -67,12 +71,10 @@ summary:focus-visible {
 .brand-lockup,
 .header-meta,
 .section-heading,
-.inspection-header,
-.input-footer,
+.license-title-row,
 .license-row,
 .export-group,
-.control-section,
-.inspection-summary {
+.control-section {
     display: flex;
     align-items: center;
 }
@@ -95,7 +97,6 @@ summary:focus-visible {
 
 .brand-subtitle,
 .section-heading p,
-.inspection-header p,
 .inline-status,
 .service-settings p {
     color: var(--muted);
@@ -133,36 +134,6 @@ summary:focus-visible {
     font-size: 11px;
 }
 
-.workspace-tabs {
-    height: 42px;
-    padding: 0 16px;
-    display: flex;
-    align-items: end;
-    gap: 22px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-}
-
-.workspace-tab {
-    height: 42px;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 650;
-}
-
-.workspace-tab:hover {
-    color: var(--text);
-}
-
-.workspace-tab.active {
-    border-bottom-color: var(--primary);
-    color: var(--primary);
-}
-
 .pro-label {
     margin-left: 4px;
     padding: 2px 4px;
@@ -171,18 +142,14 @@ summary:focus-visible {
 }
 
 main {
-    max-height: 502px;
+    max-height: 544px;
     overflow-y: auto;
     background: var(--surface-muted);
 }
 
 .workspace {
-    display: none;
-    padding: 12px;
-}
-
-.workspace.active {
     display: block;
+    padding: 12px;
 }
 
 .workspace-grid {
@@ -223,7 +190,7 @@ main {
 }
 
 .section-heading h1,
-.inspection-header h1 {
+.license-title-row strong {
     font-size: 15px;
     line-height: 1.2;
 }
@@ -377,7 +344,6 @@ summary {
 }
 
 .setting-item > span,
-.domain-field,
 .service-settings label {
     color: var(--muted);
     font-size: 10px;
@@ -386,7 +352,6 @@ summary {
 
 .setting-item input,
 .setting-item select,
-.domain-field select,
 .service-settings input,
 .license-row input {
     height: 29px;
@@ -506,13 +471,9 @@ summary {
     gap: 6px;
 }
 
-.inspection-header {
-    justify-content: space-between;
-    margin-bottom: 10px;
-}
-
 .license-panel {
     min-height: 68px;
+    margin-bottom: 12px;
     padding: 10px 12px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
@@ -521,6 +482,10 @@ summary {
     border: 1px solid #f0d18d;
     border-left: 3px solid var(--warning);
     background: #fffaf0;
+}
+
+.license-title-row {
+    gap: 4px;
 }
 
 .license-panel p {
@@ -553,107 +518,6 @@ summary {
 
 .inline-status[data-type="success"] {
     color: var(--success);
-}
-
-.inspection-grid {
-    margin-top: 12px;
-    display: grid;
-    grid-template-columns: 308px minmax(0, 1fr);
-    gap: 12px;
-}
-
-.inspection-input-section {
-    padding-right: 12px;
-    border-right: 1px solid var(--border);
-}
-
-.inspection-textarea {
-    min-height: 154px;
-    resize: vertical;
-}
-
-.input-footer {
-    margin: 7px 0;
-    gap: 6px;
-}
-
-.domain-field {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.domain-field select {
-    width: 112px;
-}
-
-.inspection-results-section {
-    min-width: 0;
-}
-
-.inspection-summary {
-    gap: 8px;
-    color: var(--muted);
-    font-size: 10px;
-    white-space: nowrap;
-}
-
-.inspection-summary strong {
-    color: var(--text);
-}
-
-.inspection-table-wrap {
-    height: 190px;
-    overflow: auto;
-    border: 1px solid var(--border);
-}
-
-.inspection-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: 10px;
-}
-
-.inspection-table th,
-.inspection-table td {
-    padding: 6px;
-    overflow: hidden;
-    border-bottom: 1px solid var(--soft-border);
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.inspection-table th {
-    position: sticky;
-    top: 0;
-    background: #f8fafc;
-    color: #475569;
-    font-weight: 700;
-}
-
-.inspection-table th:first-child { width: 82px; }
-.inspection-table th:nth-child(2) { width: 66px; }
-.inspection-table th:nth-child(3) { width: 56px; }
-.inspection-table th:nth-child(4) { width: 64px; }
-.inspection-table th:nth-child(5) { width: 58px; }
-.inspection-table th:last-child { width: 54px; }
-
-.inspection-table tr.failed td {
-    color: #991b1b;
-    background: #fff7f7;
-}
-
-.empty-row {
-    height: 90px;
-    color: #94a3b8;
-    text-align: center !important;
-}
-
-.inspection-export-group {
-    margin-top: 8px;
 }
 
 .service-settings {

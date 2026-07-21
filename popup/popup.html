@@ -22,19 +22,30 @@
             </div>
         </header>
 
-        <nav class="workspace-tabs" aria-label="工作模式">
-            <button class="workspace-tab active" type="button" data-workspace="scraper">Alexa / Rufus 抓取</button>
-            <button class="workspace-tab" type="button" data-workspace="inspection">链接巡查 <span class="pro-label">PRO</span></button>
-        </nav>
-
         <main>
-            <section id="scraperWorkspace" class="workspace active" aria-labelledby="scraperWorkspaceTitle">
+            <section id="scraperWorkspace" class="workspace" aria-labelledby="scraperWorkspaceTitle">
+                <section id="alexaLicensePanel" class="license-panel" aria-labelledby="alexaLicenseTitle">
+                    <div>
+                        <div class="license-title-row">
+                            <strong id="alexaLicenseTitle">Alexa / Rufus 抓取</strong>
+                            <span class="pro-label">PRO</span>
+                        </div>
+                        <p>图片和视频下载免费使用；批量抓取需要有效授权码。</p>
+                    </div>
+                    <div class="license-row">
+                        <input id="alexaLicenseCode" type="password" autocomplete="off" placeholder="输入授权码">
+                        <button id="activateAlexaLicense" class="btn btn-primary" type="button">激活高级版</button>
+                        <button id="clearAlexaLicense" class="btn btn-quiet" type="button" hidden>移除授权</button>
+                    </div>
+                    <div id="alexaLicenseStatus" class="inline-status" aria-live="polite">尚未授权</div>
+                </section>
+
                 <div class="workspace-grid">
                     <div class="workspace-main">
                         <section class="work-section input-section">
                             <div class="section-heading">
                                 <div>
-                                    <h1 id="scraperWorkspaceTitle">批量抓取</h1>
+                                    <h1 id="scraperWorkspaceTitle">Alexa / Rufus 批量抓取</h1>
                                     <p>每行一个 Amazon 商品链接或 ASIN</p>
                                 </div>
                                 <span id="urlCount" class="count-label">0 个链接</span>
@@ -48,8 +59,8 @@
                             </div>
                         </section>
 
-                        <details class="work-section advanced-section" open>
-                            <summary>任务设置</summary>
+                        <details class="work-section advanced-section">
+                            <summary>任务与页面下载设置</summary>
                             <div class="settings-grid">
                                 <label class="setting-item">
                                     <span>最小延迟（秒）</span>
@@ -87,7 +98,7 @@
                                 </label>
                             </div>
                             <div class="download-settings-inline">
-                                <div class="subsection-label">页面下载按钮</div>
+                                <div class="subsection-label">免费页面下载</div>
                                 <label class="setting-item compact-setting">
                                     <span>显示方式</span>
                                     <select id="imageDownloadDisplayMode">
@@ -110,7 +121,7 @@
                         </details>
 
                         <div class="control-section">
-                            <button id="startBtn" class="btn btn-primary btn-large" type="button">开始抓取</button>
+                            <button id="startBtn" class="btn btn-primary btn-large" type="button" disabled>开始高级抓取</button>
                             <button id="pauseBtn" class="btn btn-warning btn-large" type="button" style="display: none;">暂停</button>
                             <button id="resumeBtn" class="btn btn-primary btn-large" type="button" style="display: none;">继续</button>
                             <button id="stopBtn" class="btn btn-danger btn-large" type="button" style="display: none;">停止</button>
@@ -122,7 +133,7 @@
                             <div class="section-heading compact-heading">
                                 <div>
                                     <h2>抓取进度</h2>
-                                    <p id="statusMessage">等待开始</p>
+                                    <p id="statusMessage">授权后可开始抓取</p>
                                 </div>
                                 <span id="progressPercent" class="progress-value">0%</span>
                             </div>
@@ -151,96 +162,19 @@
                         </section>
                     </aside>
                 </div>
-            </section>
-
-            <section id="inspectionWorkspace" class="workspace" aria-labelledby="inspectionWorkspaceTitle" hidden>
-                <div class="inspection-header">
-                    <div>
-                        <h1 id="inspectionWorkspaceTitle">链接巡查</h1>
-                        <p>检查商品可售状态、优惠、Choice 和新款提示</p>
-                    </div>
-                    <span id="inspectionPlanBadge" class="plan-badge free">未授权</span>
-                </div>
-
-                <section id="inspectionLockPanel" class="license-panel">
-                    <div>
-                        <strong>专业版功能</strong>
-                        <p>输入授权码后才能开始链接巡查。授权码由服务端验证。</p>
-                    </div>
-                    <div class="license-row">
-                        <input id="linkInspectionLicenseCode" type="password" autocomplete="off" placeholder="输入授权码">
-                        <button id="saveLinkInspectionLicense" class="btn btn-primary" type="button">保存授权码</button>
-                    </div>
-                    <div id="linkInspectionLicenseStatus" class="inline-status" aria-live="polite">尚未验证</div>
-                </section>
-
-                <div class="inspection-grid">
-                    <section class="work-section inspection-input-section">
-                        <div class="section-heading">
-                            <div>
-                                <h2>巡查清单</h2>
-                                <p>服务端单次最多处理 50 条，保留输入顺序和重复项</p>
-                            </div>
-                            <span id="inspectionCount" class="count-label">0 条</span>
-                        </div>
-                        <textarea id="inspectionInput" class="inspection-textarea" placeholder="每行一个 Amazon 链接或 ASIN"></textarea>
-                        <div class="input-footer">
-                            <button id="inspectionLoadFromFile" class="btn btn-secondary" type="button">导入文件</button>
-                            <button id="clearInspectionUrls" class="btn btn-quiet" type="button">清空</button>
-                            <label class="domain-field">站点
-                                <select id="inspectionDomain">
-                                    <option value="www.amazon.com">amazon.com</option>
-                                    <option value="www.amazon.ca">amazon.ca</option>
-                                    <option value="www.amazon.co.uk">amazon.co.uk</option>
-                                    <option value="www.amazon.de">amazon.de</option>
-                                    <option value="www.amazon.co.jp">amazon.co.jp</option>
-                                </select>
-                            </label>
-                        </div>
-                        <button id="runLinkInspection" class="btn btn-primary btn-large" type="button">开始链接巡查</button>
-                    </section>
-
-                    <section class="work-section inspection-results-section">
-                        <div class="section-heading compact-heading">
-                            <div>
-                                <h2>巡查结果</h2>
-                                <p id="inspectionResultStatus">尚未运行</p>
-                            </div>
-                            <div class="inspection-summary" aria-label="巡查统计">
-                                <span><strong id="inspectionSuccessCount">0</strong> 成功</span>
-                                <span><strong id="inspectionFailedCount">0</strong> 失败</span>
-                            </div>
-                        </div>
-                        <div class="inspection-table-wrap">
-                            <table class="inspection-table">
-                                <thead>
-                                    <tr><th>ASIN</th><th>价格</th><th>优惠</th><th>Choice</th><th>新款</th><th>状态</th></tr>
-                                </thead>
-                                <tbody id="inspectionResultsBody">
-                                    <tr><td colspan="6" class="empty-row">运行后显示结果</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="export-group inspection-export-group">
-                            <button id="exportInspectionCsv" class="btn btn-success" type="button" disabled>导出巡查 CSV</button>
-                            <button id="exportInspectionJson" class="btn btn-secondary" type="button" disabled>导出 JSON</button>
-                        </div>
-                    </section>
-                </div>
 
                 <details class="service-settings">
-                    <summary>服务设置</summary>
-                    <label>巡查服务地址
-                        <input id="linkInspectionApiUrl" type="url" placeholder="http://127.0.0.1:8080">
+                    <summary>授权服务设置</summary>
+                    <label>服务地址
+                        <input id="alexaLicenseApiUrl" type="url" placeholder="http://127.0.0.1:8080">
                     </label>
-                    <p>默认连接本机 `amazon-crawler` API；部署远程服务时填写 HTTPS 地址。扩展只发送巡查链接和授权码。</p>
+                    <p>正式服务必须使用 HTTPS；只有本机调试允许 localhost 或 127.0.0.1。</p>
                 </details>
             </section>
         </main>
     </div>
 
     <input type="file" id="fileInput" accept=".txt,.csv" hidden>
-    <input type="file" id="inspectionFileInput" accept=".txt,.csv" hidden>
     <script src="popup.js"></script>
 </body>
 </html>

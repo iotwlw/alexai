@@ -1,4 +1,5 @@
-const DEFAULT_LINK_INSPECTION_API_URL = 'http://127.0.0.1:8080';
+const DEFAULT_LICENSE_API_URL = 'http://127.0.0.1:8080';
+const ALEXA_SCRAPING_FEATURE = 'alexa_scraping';
 
 // Popup State
 const state = {
@@ -23,18 +24,15 @@ const state = {
         displayMode: 'hover',
         qualityMode: 'high'
     },
-    linkInspection: {
-        input: '',
-        results: [],
-        isRunning: false,
-        statusMessage: '尚未运行',
-        settings: {
-            apiBaseUrl: DEFAULT_LINK_INSPECTION_API_URL,
-            licenseCode: '',
-            verified: false,
-            lastVerifiedAt: '',
-            domain: 'www.amazon.com'
-        }
+    license: {
+        apiBaseUrl: DEFAULT_LICENSE_API_URL,
+        verified: false,
+        plan: 'free',
+        features: [],
+        expiresAt: '',
+        lastVerifiedAt: '',
+        maskedKey: '',
+        statusMessage: '尚未授权'
     },
     stats: {
         total: 0,
@@ -80,28 +78,12 @@ const elements = {
     clearData: document.getElementById('clearData'),
     dataCount: document.getElementById('dataCount'),
     planBadge: document.getElementById('planBadge'),
-    inspectionPlanBadge: document.getElementById('inspectionPlanBadge'),
-    workspaceTabs: Array.from(document.querySelectorAll('.workspace-tab')),
-    scraperWorkspace: document.getElementById('scraperWorkspace'),
-    inspectionWorkspace: document.getElementById('inspectionWorkspace'),
-    inspectionInput: document.getElementById('inspectionInput'),
-    inspectionCount: document.getElementById('inspectionCount'),
-    inspectionLoadFromFile: document.getElementById('inspectionLoadFromFile'),
-    inspectionFileInput: document.getElementById('inspectionFileInput'),
-    clearInspectionUrls: document.getElementById('clearInspectionUrls'),
-    inspectionDomain: document.getElementById('inspectionDomain'),
-    linkInspectionLicenseCode: document.getElementById('linkInspectionLicenseCode'),
-    saveLinkInspectionLicense: document.getElementById('saveLinkInspectionLicense'),
-    linkInspectionLicenseStatus: document.getElementById('linkInspectionLicenseStatus'),
-    runLinkInspection: document.getElementById('runLinkInspection'),
-    inspectionResultStatus: document.getElementById('inspectionResultStatus'),
-    inspectionSuccessCount: document.getElementById('inspectionSuccessCount'),
-    inspectionFailedCount: document.getElementById('inspectionFailedCount'),
-    inspectionResultsBody: document.getElementById('inspectionResultsBody'),
-    exportInspectionCsv: document.getElementById('exportInspectionCsv'),
-    exportInspectionJson: document.getElementById('exportInspectionJson'),
-    linkInspectionApiUrl: document.getElementById('linkInspectionApiUrl'),
-    inspectionLockPanel: document.getElementById('inspectionLockPanel')
+    alexaLicensePanel: document.getElementById('alexaLicensePanel'),
+    alexaLicenseCode: document.getElementById('alexaLicenseCode'),
+    activateAlexaLicense: document.getElementById('activateAlexaLicense'),
+    clearAlexaLicense: document.getElementById('clearAlexaLicense'),
+    alexaLicenseStatus: document.getElementById('alexaLicenseStatus'),
+    alexaLicenseApiUrl: document.getElementById('alexaLicenseApiUrl')
 };
 
 // Initialize
@@ -109,6 +91,7 @@ async function init() {
     bindEvents();
     updateUI();
     await loadSavedState();
+    await refreshAlexaLicenseStatus();
     await checkRunningStatus();
 }
 
@@ -124,9 +107,7 @@ async function loadSavedState() {
             'scraperRunning',
             'scraperPaused',
             'imageDownloadSettings',
-            'linkInspectionInput',
-            'linkInspectionResults',
-            'linkInspectionSettings'
+            'alexaLicenseState'
         ]);
 
         if (result.scraperUrls) {
@@ -162,17 +143,8 @@ async function loadSavedState() {
             Object.assign(state.imageDownloadSettings, normalizeImageDownloadSettings(result.imageDownloadSettings));
         }
 
-        if (result.linkInspectionInput !== undefined) {
-            state.linkInspection.input = String(result.linkInspectionInput || '');
-            elements.inspectionInput.value = state.linkInspection.input;
-        }
-
-        if (Array.isArray(result.linkInspectionResults)) {
-            state.linkInspection.results = result.linkInspectionResults;
-        }
-
-        if (result.linkInspectionSettings) {
-            Object.assign(state.linkInspection.settings, normalizeLinkInspectionSettings(result.linkInspectionSettings));
+        if (result.alexaLicenseState) {
+            state.license = normalizeAlexaLicenseState(result.alexaLicenseState);
         }
 
         // Load config into UI
@@ -187,12 +159,14 @@ async function loadSavedState() {
         elements.imageDownloadDetectionEnabled.checked = state.imageDownloadSettings.detectionEnabled;
         elements.imageDownloadDisplayMode.value = state.imageDownloadSettings.displayMode;
         elements.imageDownloadQualityMode.value = state.imageDownloadSettings.qualityMode;
-        elements.linkInspectionLicenseCode.value = state.linkInspection.settings.licenseCode;
-        elements.linkInspectionApiUrl.value = state.linkInspection.settings.apiBaseUrl;
-        elements.inspectionDomain.value = state.linkInspection.settings.domain;
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
 
         updateUI();
-        updateLinkInspectionUI();
+        chrome.storage.local.remove([
+            'linkInspectionInput',
+            'linkInspectionResults',
+            'linkInspectionSettings'
+        ]);
     } catch (error) {
         console.error('Failed to load saved state:', error);
     }
@@ -230,21 +204,11 @@ function bindEvents() {
     elements.exportJson.addEventListener('click', exportJSON);
     elements.clearData.addEventListener('click', handleClearData);
 
-    // Workspace navigation and link inspection
-    elements.workspaceTabs.forEach(tab => {
-        tab.addEventListener('click', () => switchWorkspace(tab.dataset.workspace));
-    });
-    elements.inspectionInput.addEventListener('input', handleInspectionInput);
-    elements.inspectionLoadFromFile.addEventListener('click', () => elements.inspectionFileInput.click());
-    elements.inspectionFileInput.addEventListener('change', handleInspectionFileLoad);
-    elements.clearInspectionUrls.addEventListener('click', clearInspectionInput);
-    elements.inspectionDomain.addEventListener('change', saveLinkInspectionSettings);
-    elements.linkInspectionLicenseCode.addEventListener('input', handleLinkInspectionLicenseInput);
-    elements.saveLinkInspectionLicense.addEventListener('click', handleSaveLinkInspectionLicense);
-    elements.linkInspectionApiUrl.addEventListener('change', handleLinkInspectionApiUrlChange);
-    elements.runLinkInspection.addEventListener('click', handleRunLinkInspection);
-    elements.exportInspectionCsv.addEventListener('click', exportInspectionCSV);
-    elements.exportInspectionJson.addEventListener('click', exportInspectionJSON);
+    // Alexa / Rufus professional license
+    elements.alexaLicenseCode.addEventListener('input', handleAlexaLicenseInput);
+    elements.activateAlexaLicense.addEventListener('click', handleActivateAlexaLicense);
+    elements.clearAlexaLicense.addEventListener('click', handleClearAlexaLicense);
+    elements.alexaLicenseApiUrl.addEventListener('change', handleAlexaLicenseApiUrlChange);
 }
 
 // Handle URL input
@@ -363,143 +327,45 @@ function updateImageDownloadSettings() {
     showStatus('页面下载设置已保存，已同步到 Amazon 页面', 'success');
 }
 
-function normalizeLinkInspectionSettings(settings = {}) {
+function normalizeAlexaLicenseState(licenseState = {}) {
+    const features = Array.isArray(licenseState.features)
+        ? licenseState.features.map(feature => String(feature || '').trim()).filter(Boolean)
+        : [];
+
     return {
-        apiBaseUrl: normalizeLinkInspectionApiUrl(settings.apiBaseUrl || DEFAULT_LINK_INSPECTION_API_URL),
-        licenseCode: String(settings.licenseCode || '').trim(),
-        verified: settings.verified === true,
-        lastVerifiedAt: String(settings.lastVerifiedAt || ''),
-        domain: normalizeInspectionDomain(settings.domain)
+        apiBaseUrl: normalizeLicenseApiUrl(licenseState.apiBaseUrl || DEFAULT_LICENSE_API_URL),
+        verified: licenseState.verified === true,
+        plan: String(licenseState.plan || 'free'),
+        features,
+        expiresAt: String(licenseState.expiresAt || ''),
+        lastVerifiedAt: String(licenseState.lastVerifiedAt || ''),
+        maskedKey: String(licenseState.maskedKey || ''),
+        statusMessage: String(licenseState.statusMessage || '尚未授权')
     };
 }
 
-function normalizeInspectionDomain(value) {
-    const allowedDomains = new Set([
-        'www.amazon.com',
-        'www.amazon.ca',
-        'www.amazon.co.uk',
-        'www.amazon.de',
-        'www.amazon.co.jp'
-    ]);
-    const domain = String(value || '').trim().toLowerCase();
-    return allowedDomains.has(domain) ? domain : 'www.amazon.com';
-}
-
-function normalizeLinkInspectionApiUrl(value) {
+function normalizeLicenseApiUrl(value) {
     const raw = String(value || '').trim();
-    if (!raw) return DEFAULT_LINK_INSPECTION_API_URL;
+    const url = new URL(raw || DEFAULT_LICENSE_API_URL);
+    const isLocalHttp = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
 
-    try {
-        const url = new URL(raw);
-        if (!['http:', 'https:'].includes(url.protocol)) {
-            return DEFAULT_LINK_INSPECTION_API_URL;
-        }
-
-        return url.href.replace(/\/+$/, '');
-    } catch (_) {
-        return DEFAULT_LINK_INSPECTION_API_URL;
-    }
-}
-
-function switchWorkspace(workspace) {
-    const inspectionActive = workspace === 'inspection';
-    elements.workspaceTabs.forEach(tab => {
-        const active = tab.dataset.workspace === workspace;
-        tab.classList.toggle('active', active);
-        tab.setAttribute('aria-selected', String(active));
-    });
-    elements.scraperWorkspace.classList.toggle('active', !inspectionActive);
-    elements.scraperWorkspace.hidden = inspectionActive;
-    elements.inspectionWorkspace.classList.toggle('active', inspectionActive);
-    elements.inspectionWorkspace.hidden = !inspectionActive;
-    if (inspectionActive) {
-        updateLinkInspectionUI();
-    }
-}
-
-function getInspectionInputLines() {
-    return elements.inspectionInput.value
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
-}
-
-function handleInspectionInput() {
-    state.linkInspection.input = elements.inspectionInput.value;
-    state.linkInspection.statusMessage = '尚未运行';
-    updateLinkInspectionUI();
-    saveState();
-}
-
-async function handleInspectionFileLoad(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-        const text = await file.text();
-        elements.inspectionInput.value = text;
-        handleInspectionInput();
-        showInspectionStatus(`已导入 ${getInspectionInputLines().length} 条链接`, 'success');
-    } catch (error) {
-        showInspectionStatus(`文件读取失败：${error.message}`, 'error');
-    } finally {
-        event.target.value = '';
-    }
-}
-
-function clearInspectionInput() {
-    elements.inspectionInput.value = '';
-    state.linkInspection.input = '';
-    state.linkInspection.results = [];
-    state.linkInspection.statusMessage = '尚未运行';
-    saveState();
-    updateLinkInspectionUI();
-}
-
-function saveLinkInspectionSettings() {
-    state.linkInspection.settings = normalizeLinkInspectionSettings({
-        ...state.linkInspection.settings,
-        domain: elements.inspectionDomain.value
-    });
-    saveState();
-}
-
-function handleLinkInspectionApiUrlChange() {
-    state.linkInspection.settings = normalizeLinkInspectionSettings({
-        ...state.linkInspection.settings,
-        apiBaseUrl: elements.linkInspectionApiUrl.value,
-        verified: false
-    });
-    elements.linkInspectionApiUrl.value = state.linkInspection.settings.apiBaseUrl;
-    saveState();
-    updateLinkInspectionUI();
-}
-
-function handleLinkInspectionLicenseInput() {
-    const changed = elements.linkInspectionLicenseCode.value.trim() !== state.linkInspection.settings.licenseCode;
-    if (changed) {
-        elements.linkInspectionLicenseStatus.textContent = '授权码有修改，请先保存';
-        elements.linkInspectionLicenseStatus.dataset.type = 'info';
-    }
-}
-
-async function handleSaveLinkInspectionLicense() {
-    const licenseCode = elements.linkInspectionLicenseCode.value.trim();
-    state.linkInspection.settings = normalizeLinkInspectionSettings({
-        ...state.linkInspection.settings,
-        licenseCode,
-        verified: false,
-        lastVerifiedAt: ''
-    });
-    await saveState();
-
-    if (!licenseCode) {
-        showInspectionStatus('请输入授权码', 'error');
-        return;
+    if (url.protocol !== 'https:' && !isLocalHttp) {
+        throw new Error('正式授权服务必须使用 HTTPS，本机调试可使用 localhost 或 127.0.0.1');
     }
 
-    showInspectionStatus('授权码已保存，将在首次巡查时向服务端验证', 'info');
-    updateLinkInspectionUI();
+    url.search = '';
+    url.hash = '';
+    return url.href.replace(/\/+$/, '');
+}
+
+function isAlexaScrapingAuthorized() {
+    if (!state.license.verified || !state.license.features.includes(ALEXA_SCRAPING_FEATURE)) {
+        return false;
+    }
+
+    if (!state.license.expiresAt) return true;
+    const expiresAt = Date.parse(state.license.expiresAt);
+    return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
 function sendExtensionMessage(message) {
@@ -516,7 +382,7 @@ function sendExtensionMessage(message) {
     });
 }
 
-async function requestInspectionOriginPermission(apiBaseUrl) {
+async function requestLicenseOriginPermission(apiBaseUrl) {
     if (!chrome.permissions?.contains || !chrome.permissions?.request) return true;
 
     const url = new URL(apiBaseUrl);
@@ -527,205 +393,165 @@ async function requestInspectionOriginPermission(apiBaseUrl) {
     return chrome.permissions.request({ origins: [originPattern] });
 }
 
-async function handleRunLinkInspection() {
-    const lines = getInspectionInputLines();
-    if (!lines.length) {
-        showInspectionStatus('请先输入链接或 ASIN', 'error');
+async function handleActivateAlexaLicense() {
+    const licenseKey = elements.alexaLicenseCode.value.trim();
+    if (!licenseKey) {
+        showAlexaLicenseStatus('请输入授权码', 'error');
+        elements.alexaLicenseCode.focus();
         return;
     }
 
-    if (lines.length > 50) {
-        showInspectionStatus('单次最多巡查 50 条，请拆分后再运行', 'error');
-        return;
-    }
-
-    if (!state.linkInspection.settings.licenseCode) {
-        showInspectionStatus('请先输入授权码', 'error');
-        elements.linkInspectionLicenseCode.focus();
-        return;
-    }
-
-    if (elements.linkInspectionLicenseCode.value.trim() !== state.linkInspection.settings.licenseCode) {
-        showInspectionStatus('授权码有修改，请先保存', 'error');
-        elements.saveLinkInspectionLicense.focus();
-        return;
-    }
-
-    const apiBaseUrl = normalizeLinkInspectionApiUrl(elements.linkInspectionApiUrl.value);
+    let apiBaseUrl;
     try {
-        const permissionGranted = await requestInspectionOriginPermission(apiBaseUrl);
+        apiBaseUrl = normalizeLicenseApiUrl(elements.alexaLicenseApiUrl.value);
+        const permissionGranted = await requestLicenseOriginPermission(apiBaseUrl);
         if (!permissionGranted) {
-            showInspectionStatus('未获得巡查服务的网络权限', 'error');
+            showAlexaLicenseStatus('未获得授权服务的网络权限', 'error');
             return;
         }
     } catch (error) {
-        showInspectionStatus(`服务地址无效：${error.message}`, 'error');
+        showAlexaLicenseStatus(`服务地址无效：${error.message}`, 'error');
         return;
     }
 
-    state.linkInspection.settings = normalizeLinkInspectionSettings({
-        ...state.linkInspection.settings,
-        apiBaseUrl,
-        domain: elements.inspectionDomain.value
-    });
-    state.linkInspection.isRunning = true;
-    state.linkInspection.statusMessage = '正在巡查...';
-    state.linkInspection.results = [];
-    await saveState();
-    updateLinkInspectionUI();
+    elements.activateAlexaLicense.disabled = true;
+    showAlexaLicenseStatus('正在验证授权码...', 'info');
+    let activationError = '';
 
     try {
         const response = await sendExtensionMessage({
-            action: 'runLinkInspection',
-            inputs: lines,
-            domain: state.linkInspection.settings.domain
+            action: 'activateAlexaLicense',
+            licenseKey,
+            apiBaseUrl
         });
 
         if (!response?.success) {
-            throw new Error(response?.error || '巡查服务返回失败');
+            throw new Error(response?.error || '授权服务返回失败');
         }
 
-        state.linkInspection.results = Array.isArray(response.data?.items) ? response.data.items : [];
-        state.linkInspection.settings.verified = true;
-        state.linkInspection.settings.lastVerifiedAt = new Date().toISOString();
-        state.linkInspection.statusMessage = `已完成 ${state.linkInspection.results.length} 条`;
-        await saveState();
-        showInspectionStatus(state.linkInspection.statusMessage, 'success');
+        state.license = normalizeAlexaLicenseState(response.license);
+        elements.alexaLicenseCode.value = '';
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
+        showAlexaLicenseStatus(state.license.statusMessage || '高级版已激活', 'success');
     } catch (error) {
-        state.linkInspection.settings.verified = false;
-        state.linkInspection.statusMessage = error.message;
-        await saveState();
-        showInspectionStatus(error.message, 'error');
+        await refreshAlexaLicenseStatus();
+        activationError = error.message;
     } finally {
-        state.linkInspection.isRunning = false;
-        updateLinkInspectionUI();
+        elements.activateAlexaLicense.disabled = false;
+        updateAlexaLicenseUI();
+        if (activationError) {
+            showAlexaLicenseStatus(activationError, 'error');
+        }
     }
 }
 
-function showInspectionStatus(message, type = 'info') {
-    state.linkInspection.statusMessage = message;
-    elements.linkInspectionLicenseStatus.textContent = message;
-    elements.linkInspectionLicenseStatus.dataset.type = type;
-    elements.inspectionResultStatus.textContent = message;
+async function handleClearAlexaLicense() {
+    try {
+        const response = await sendExtensionMessage({ action: 'clearAlexaLicense' });
+        if (!response?.success) {
+            throw new Error(response?.error || '移除授权失败');
+        }
+
+        state.license = normalizeAlexaLicenseState(response.license);
+        elements.alexaLicenseCode.value = '';
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
+        showAlexaLicenseStatus('授权已移除，Alexa 抓取已锁定', 'info');
+    } catch (error) {
+        showAlexaLicenseStatus(error.message, 'error');
+    } finally {
+        updateAlexaLicenseUI();
+    }
 }
 
-function updateLinkInspectionUI() {
-    if (!elements.inspectionInput) return;
+function handleAlexaLicenseInput() {
+    if (elements.alexaLicenseCode.value.trim()) {
+        showAlexaLicenseStatus('输入完成后点击“激活高级版”', 'info');
+    } else {
+        updateAlexaLicenseUI();
+    }
+}
 
-    const lines = getInspectionInputLines();
-    const settings = state.linkInspection.settings;
-    const verified = settings.verified === true;
-    elements.inspectionCount.textContent = `${lines.length} 条`;
-    elements.planBadge.textContent = verified ? '专业版' : '免费版';
-    elements.planBadge.className = `plan-badge ${verified ? 'pro' : 'free'}`;
-    elements.inspectionPlanBadge.textContent = verified ? '已授权' : '未授权';
-    elements.inspectionPlanBadge.className = `plan-badge ${verified ? 'pro' : 'free'}`;
-    elements.inspectionLockPanel.classList.toggle('authorized', verified);
-    elements.linkInspectionLicenseStatus.textContent = verified
-        ? `已验证${settings.lastVerifiedAt ? ` · ${formatLocalTime(settings.lastVerifiedAt)}` : ''}`
-        : (state.linkInspection.statusMessage || '尚未验证');
-    elements.linkInspectionLicenseStatus.dataset.type = verified ? 'success' : 'info';
-    elements.runLinkInspection.disabled = state.linkInspection.isRunning;
-    elements.runLinkInspection.textContent = state.linkInspection.isRunning ? '巡查中...' : '开始链接巡查';
-    elements.exportInspectionCsv.disabled = state.linkInspection.results.length === 0;
-    elements.exportInspectionJson.disabled = state.linkInspection.results.length === 0;
-    elements.inspectionResultStatus.textContent = state.linkInspection.statusMessage || '尚未运行';
-    renderInspectionResults();
+async function handleAlexaLicenseApiUrlChange() {
+    try {
+        const apiBaseUrl = normalizeLicenseApiUrl(elements.alexaLicenseApiUrl.value);
+        const response = await sendExtensionMessage({
+            action: 'updateAlexaLicenseApiUrl',
+            apiBaseUrl
+        });
+        if (!response?.success) {
+            throw new Error(response?.error || '授权服务地址保存失败');
+        }
+
+        state.license = normalizeAlexaLicenseState(response.license);
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
+        showAlexaLicenseStatus('服务地址已更新，请重新激活授权', 'info');
+    } catch (error) {
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
+        showAlexaLicenseStatus(error.message, 'error');
+    } finally {
+        updateAlexaLicenseUI();
+    }
+}
+
+async function refreshAlexaLicenseStatus() {
+    try {
+        const response = await sendExtensionMessage({ action: 'getAlexaLicenseStatus' });
+        if (!response?.success) {
+            throw new Error(response?.error || '读取授权状态失败');
+        }
+
+        state.license = normalizeAlexaLicenseState(response.license);
+        elements.alexaLicenseApiUrl.value = state.license.apiBaseUrl;
+    } catch (error) {
+        state.license = normalizeAlexaLicenseState({
+            ...state.license,
+            verified: false,
+            features: [],
+            statusMessage: error.message
+        });
+    }
+
+    updateAlexaLicenseUI();
+}
+
+function showAlexaLicenseStatus(message, type = 'info') {
+    elements.alexaLicenseStatus.textContent = message;
+    elements.alexaLicenseStatus.dataset.type = type;
+}
+
+function updateAlexaLicenseUI() {
+    const authorized = isAlexaScrapingAuthorized();
+    elements.planBadge.textContent = authorized ? '专业版' : '免费版';
+    elements.planBadge.className = `plan-badge ${authorized ? 'pro' : 'free'}`;
+    elements.alexaLicensePanel.classList.toggle('authorized', authorized);
+    elements.clearAlexaLicense.hidden = !state.license.maskedKey;
+    elements.startBtn.disabled = !authorized;
+    elements.resumeBtn.disabled = !authorized;
+
+    if (authorized) {
+        const details = [state.license.maskedKey];
+        if (state.license.expiresAt) {
+            details.push(`有效期至 ${formatLocalTime(state.license.expiresAt)}`);
+        }
+        showAlexaLicenseStatus(`高级版已授权${details.filter(Boolean).length ? ` · ${details.filter(Boolean).join(' · ')}` : ''}`, 'success');
+    } else {
+        showAlexaLicenseStatus(state.license.statusMessage || '尚未授权', 'info');
+    }
 }
 
 function formatLocalTime(value) {
-    try {
-        return new Date(value).toLocaleString();
-    } catch (_) {
-        return value;
-    }
-}
-
-function setTableCell(row, value) {
-    const cell = document.createElement('td');
-    cell.textContent = String(value || '-');
-    cell.title = String(value || '');
-    row.appendChild(cell);
-}
-
-function renderInspectionResults() {
-    const results = state.linkInspection.results;
-    const successCount = results.filter(item => item.status === 'success').length;
-    const failedCount = results.length - successCount;
-    elements.inspectionSuccessCount.textContent = successCount;
-    elements.inspectionFailedCount.textContent = failedCount;
-    elements.inspectionResultsBody.textContent = '';
-
-    if (!results.length) {
-        const row = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.colSpan = 6;
-        cell.className = 'empty-row';
-        cell.textContent = '运行后显示结果';
-        row.appendChild(cell);
-        elements.inspectionResultsBody.appendChild(row);
-        return;
-    }
-
-    results.forEach(item => {
-        const row = document.createElement('tr');
-        if (item.status !== 'success') row.classList.add('failed');
-        setTableCell(row, item.asin || item.original_asin);
-        setTableCell(row, item.price);
-        setTableCell(row, item.coupon || item.display_discount);
-        setTableCell(row, item.choice_badge);
-        setTableCell(row, item.newer_model);
-        setTableCell(row, item.status === 'success' ? '成功' : (item.error_message || '失败'));
-        elements.inspectionResultsBody.appendChild(row);
-    });
-}
-
-function getInspectionExportRecords() {
-    return state.linkInspection.results.map(item => ({
-        输入: item.input || '',
-        URL: item.url || '',
-        原ASIN: item.original_asin || '',
-        ASIN: item.asin || '',
-        状态: item.status || '',
-        商品标题: item.product_title || '',
-        价格: item.price || '',
-        优惠券: item.coupon || '',
-        Deal: item.is_deal || '',
-        Prime专享: item.prime_exclusive || '',
-        展示折扣: item.display_discount || '',
-        评分: item.rating || '',
-        评价数: item.review_count || '',
-        促销检查: item.promo_check || '',
-        促销: item.promotion || '',
-        优惠码: item.promo_code || '',
-        保留: item.keep || '',
-        Choice: item.choice_badge || '',
-        高频退货: item.frequent_return || '',
-        新款: item.newer_model || '',
-        错误: item.error_message || '',
-        检查时间: item.captured_at || ''
-    }));
-}
-
-function exportInspectionCSV() {
-    const records = getInspectionExportRecords();
-    if (!records.length) return;
-    const headers = Object.keys(records[0]);
-    const rows = records.map(record => headers.map(header => record[header] || ''));
-    const csv = [headers, ...rows].map(row => row.map(toCsvCell).join(',')).join('\n');
-    downloadFile(csv, 'alexai_link_inspection.csv', 'text/csv;charset=utf-8;');
-    showInspectionStatus('巡查 CSV 已导出', 'success');
-}
-
-function exportInspectionJSON() {
-    const records = getInspectionExportRecords();
-    if (!records.length) return;
-    downloadFile(JSON.stringify(records, null, 2), 'alexai_link_inspection.json', 'application/json;charset=utf-8;');
-    showInspectionStatus('巡查 JSON 已导出', 'success');
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value || '') : date.toLocaleString();
 }
 
 // Handle start
 async function handleStart() {
+    if (!isAlexaScrapingAuthorized()) {
+        showStatus('⚠️ Alexa / Rufus 抓取是高级功能，请先激活授权码', 'error');
+        elements.alexaLicenseCode.focus();
+        return;
+    }
+
     if (state.urls.length === 0) {
         showStatus('⚠️ 请先导入URL', 'error');
         return;
@@ -772,12 +598,14 @@ async function handleStart() {
         } else {
             showStatus('❌ 启动失败: ' + (response?.error || '未知错误'), 'error');
             state.isRunning = false;
+            await refreshAlexaLicenseStatus();
             await saveState();
         }
     } catch (error) {
         console.error('Failed to start:', error);
         showStatus('❌ 启动失败: ' + error.message, 'error');
         state.isRunning = false;
+        await refreshAlexaLicenseStatus();
         await saveState();
     }
 
@@ -799,14 +627,25 @@ async function handlePause() {
 
 // Handle resume
 async function handleResume() {
+    if (!isAlexaScrapingAuthorized()) {
+        showStatus('⚠️ 高级版授权不可用，请重新激活后继续', 'error');
+        elements.alexaLicenseCode.focus();
+        return;
+    }
+
     try {
-        await chrome.runtime.sendMessage({ action: 'resume' });
+        const response = await chrome.runtime.sendMessage({ action: 'resume' });
+        if (!response?.success) {
+            throw new Error(response?.error || '继续任务失败');
+        }
         state.isPaused = false;
         showStatus('▶️ 任务已继续', 'success');
         await saveState();
         updateUI();
     } catch (error) {
         console.error('Failed to resume:', error);
+        await refreshAlexaLicenseStatus();
+        showStatus('❌ 继续失败: ' + error.message, 'error');
     }
 }
 
@@ -978,9 +817,6 @@ async function saveState() {
             scraperData: state.scrapedData,
             scraperConfig: state.config,
             imageDownloadSettings: state.imageDownloadSettings,
-            linkInspectionInput: state.linkInspection.input,
-            linkInspectionResults: state.linkInspection.results,
-            linkInspectionSettings: state.linkInspection.settings,
             scraperStats: state.stats,
             scraperRunning: state.isRunning,
             scraperPaused: state.isPaused
@@ -1035,7 +871,7 @@ function updateUI() {
     elements.stopBtn.style.display = state.isRunning ? 'inline-flex' : 'none';
     elements.imageDownloadDisplayMode.disabled = !state.imageDownloadSettings.detectionEnabled;
     elements.imageDownloadQualityMode.disabled = !state.imageDownloadSettings.detectionEnabled;
-    updateLinkInspectionUI();
+    updateAlexaLicenseUI();
 
     // Update container class for animation
     if (state.isRunning && !state.isPaused) {

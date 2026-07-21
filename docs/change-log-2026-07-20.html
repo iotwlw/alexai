@@ -248,12 +248,12 @@
         <header class="hero">
             <div>
                 <div class="brand"><img src="../icons/icon48.png" alt="alexai"> alexai / 修改记录</div>
-                <h1>图片、视频与链接巡查交互优化</h1>
-                <p>基于现有 Manifest V3 扩展完成页面下载设置、视频入口强化、专业版链接巡查和 Popup 信息架构重整。</p>
+                <h1>免费媒体下载与 Alexa 高级版授权</h1>
+                <p>基于现有 Manifest V3 扩展完成页面下载设置、视频入口强化，并纠正产品边界：图片/视频下载免费，Alexa / Rufus 批量抓取需要高级版授权。</p>
             </div>
             <div class="hero-meta">
                 <span>记录日期</span>
-                <strong>2026-07-20</strong>
+                <strong>2026-07-21</strong>
                 <span style="margin-top: 13px;">基线版本</span>
                 <strong>alexai v1.0.0</strong>
             </div>
@@ -261,7 +261,7 @@
 
         <div class="content">
             <div class="summary-strip">
-                <div class="summary-item"><strong>5</strong><span>项明确需求逐项落地</span></div>
+                <div class="summary-item"><strong>6</strong><span>项明确需求逐项落地</span></div>
                 <div class="summary-item"><strong>3 层</strong><span>Popup、Background、Content 职责分离</span></div>
                 <div class="summary-item"><strong>0</strong><span>悬停模式新增 JavaScript 扫描任务</span></div>
             </div>
@@ -275,9 +275,10 @@
                         <tbody>
                             <tr><td>1</td><td>图片按钮支持直接/悬停显示；默认只显示高清；高清/标清可配置</td><td>新增 <code>displayMode</code> 与 <code>qualityMode</code>，默认 <code>hover + high</code>，仅在需要时创建 SD 按钮。</td><td><span class="status done">已完成</span></td></tr>
                             <tr><td>2</td><td>大幅视频位置的下载图标更容易发现</td><td>按视频宿主选择器与尺寸识别大视频，将 40x24 的 VID 入口升级为 88x38 的“下载视频”。</td><td><span class="status done">已完成</span></td></tr>
-                            <tr><td>3</td><td>链接巡查作为高级版，授权后才能使用</td><td>增加 PRO 工作区、授权码门槛、可选网络权限和服务端令牌验证，复用 <code>amazon-crawler</code> API。</td><td><span class="status pro">专业版</span></td></tr>
-                            <tr><td>4</td><td>优化用户交互和设计，更简洁清晰</td><td>Popup 改为两个工作模式，任务设置分层，主操作、状态与导出区职责清楚。</td><td><span class="status done">已完成</span></td></tr>
+                            <tr><td>3</td><td>Alexa / Rufus 抓取作为高级版，授权后才能使用</td><td>在现有抓取主流程前增加 <code>alexa_scraping</code> 权益验证；Popup 控制交互，Background 在开始和继续任务前复验。</td><td><span class="status pro">专业版</span></td></tr>
+                            <tr><td>4</td><td>优化用户交互和设计，更简洁清晰</td><td>删除误加的独立链接巡查工作区，保留单一 Alexa 抓取主流程；任务设置折叠，免费/高级边界直接显示。</td><td><span class="status done">已完成</span></td></tr>
                             <tr><td>5</td><td>图片下载设置可在页面小图标位置设置</td><td>右下角 <code>A</code> 入口使用 Shadow DOM，直接同步下载开关、显示方式和清晰度。</td><td><span class="status done">已完成</span></td></tr>
+                            <tr><td>6</td><td>记录每处修改的逻辑与原因，并整理成 HTML</td><td>本文件记录需求映射、实现逻辑、文件级原因、授权边界和真实运行验证结果。</td><td><span class="status done">已完成</span></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -291,6 +292,7 @@
                     <div class="logic-block"><strong>性能逻辑</strong><p>悬停使用根节点 class 与 CSS <code>:hover/:focus-within</code>，不为每张图片增加 mouseenter/mouseleave 监听。</p></div>
                     <div class="logic-block"><strong>节点控制</strong><p>仅高清模式不会创建 SD 按钮；切换到“高清 + 标清”后才重建需要的控件。</p></div>
                     <div class="logic-block"><strong>旧设置迁移</strong><p>历史 <code>hidden</code> 设置自动映射为 <code>hover</code>，避免升级后按钮永久不可见。</p></div>
+                    <div class="logic-block"><strong>连续修改保护</strong><p>页面入口先更新内存状态，再按顺序写入 Storage；清晰度或启用状态改变时立即清理旧控件并重扫，避免快速操作把 SD 状态覆盖或遗留在 DOM。</p></div>
                 </div>
                 <ul class="change-list">
                     <li><code>HD</code> 使用现有高分辨率候选解析逻辑，选择实际可加载的较大图片。</li>
@@ -313,24 +315,24 @@
             </section>
 
             <section id="inspection">
-                <h2>3. 链接巡查专业版</h2>
-                <p>没有在扩展中重新实现 Amazon 巡查爬虫，而是复用成熟的 <code>D:\AmazonCode\amazon-crawler</code> HTTP API。</p>
-                <div class="flow">Popup 输入链接与授权码
-    -> 请求目标服务的可选 host permission
-    -> Background 从 chrome.storage.local 读取授权码
-    -> POST /api/asin-inspection
-       Header: X-Crawler-Token
-    -> 服务端验证授权并执行巡查
-    -> Popup 展示并导出 CSV / JSON</div>
+                <h2>3. Alexa / Rufus 抓取高级版</h2>
+                <p>原实现把“链接巡查”错误理解成另一套 Amazon 商品巡检，并接入 <code>/api/asin-inspection</code>。现已删除该工作区、结果表和 API 集成；用户所说的链接巡查就是当前扩展已有的 Alexa / Rufus 批量抓取。</p>
+                <div class="flow">Popup 输入授权码
+    -> 请求授权服务的可选 host permission
+    -> Background 生成/读取随机 deviceId
+    -> POST /v1/licenses/activate
+    -> 服务端返回 features: ["alexa_scraping"]
+    -> Popup 开放“开始高级抓取”
+    -> 每次开始/继续前 Background 再次在线验证</div>
                 <div class="logic-grid">
-                    <div class="logic-block"><strong>授权门槛</strong><p>没有授权码时 Background 拒绝请求；401/403 会显示“无效、过期或停用”，并撤销本地已验证状态。</p></div>
+                    <div class="logic-block"><strong>双层门槛</strong><p>Popup 未授权时禁用按钮；即使绕过界面直接发消息，Background 仍会在创建 Amazon 标签页前验证授权。</p></div>
                     <div class="logic-block"><strong>网络边界</strong><p>HTTP 只允许 <code>localhost</code> 和 <code>127.0.0.1</code>；远程服务必须使用 HTTPS。</p></div>
-                    <div class="logic-block"><strong>输入边界</strong><p>单次最多 50 条，与现有 API 限制一致；保留输入顺序和重复项。</p></div>
-                    <div class="logic-block"><strong>隐私边界</strong><p>只提交用户明确输入的巡查链接、站点和授权码，不上传 Amazon Cookie 或现有抓取结果。</p></div>
+                    <div class="logic-block"><strong>权益边界</strong><p>任意非空授权码不能解锁；响应必须有效、未过期、设备匹配，并明确包含 <code>alexa_scraping</code>。</p></div>
+                    <div class="logic-block"><strong>隐私边界</strong><p>授权请求只提交授权码、随机设备 ID 和扩展版本，不上传 Amazon Cookie、账号、URL、ASIN 或抓取结果。</p></div>
                 </div>
                 <div class="callout">
-                    <strong>生产部署前必须完成</strong>
-                    <span><code>amazon-crawler</code> 服务端必须设置 <code>CRAWLER_API_TOKEN</code>，否则其当前 API 会接受任意请求。扩展默认连接 <code>http://127.0.0.1:8080</code>；对外发布时应填写实际 HTTPS 服务地址。</span>
+                    <strong>能力边界</strong>
+                    <span>当前 MVP 在开始/继续时严格在线复验，尚未实现签名令牌、离线宽限和设备解绑。扩展本地代码可被查看或修改，授权不能形成不可绕过的 DRM；需要更强保护时，应把关键高级能力或持续更新放到服务端。</span>
                 </div>
             </section>
 
@@ -338,7 +340,7 @@
                 <h2>4. 交互与信息架构</h2>
                 <ul class="change-list">
                     <li>Popup 顶部保留品牌、版本和当前免费版/专业版状态。</li>
-                    <li>“Alexa / Rufus 抓取”和“链接巡查 PRO”使用明确的模式标签，避免两套任务混在同一个表单。</li>
+                    <li>只保留一个 Alexa / Rufus 抓取工作区，顶部直接说明“图片/视频免费，批量抓取需授权”。</li>
                     <li>抓取设置作为可折叠次级区域，输入与开始按钮保持主路径。</li>
                     <li>状态、统计和导出集中在右侧上下文区，减少视线往返。</li>
                     <li>去除装饰性渐变和大量 Emoji，用单一蓝色主操作、绿色成功、琥珀色专业版状态建立一致层级。</li>
@@ -351,7 +353,7 @@
                 <p>原来的 <code>alexai Ready</code> 状态块改为 42x42 的 <code>A</code> 品牌入口，搜索页和商品详情页均可使用。</p>
                 <div class="logic-grid">
                     <div class="logic-block"><strong>样式隔离</strong><p>面板使用 Shadow DOM，Amazon 页面 CSS 不会改变开关、选择器和按钮尺寸。</p></div>
-                    <div class="logic-block"><strong>同步方式</strong><p>所有设置写入 <code>chrome.storage.local</code>，现有 storage change 监听即时刷新页面控件。</p></div>
+                    <div class="logic-block"><strong>同步方式</strong><p>所有设置写入 <code>chrome.storage.local</code>；页面入口会先更新当前页并串行保存，Popup 与 storage change 监听负责跨界面同步。</p></div>
                     <div class="logic-block"><strong>可访问性</strong><p>支持键盘焦点、<code>Esc</code> 关闭、ARIA 标签和 <code>:focus-visible</code>。</p></div>
                     <div class="logic-block"><strong>页面干扰</strong><p>面板默认关闭，只保留小图标；点击外部自动收起，不持续占用 Amazon 内容区域。</p></div>
                 </div>
@@ -363,13 +365,13 @@
                     <table>
                         <thead><tr><th>文件</th><th>修改逻辑</th><th>修改原因</th></tr></thead>
                         <tbody>
-                            <tr><td><code>content/content.js</code></td><td>扩展图片设置模型、CSS 悬停、按需 SD 控件、大视频入口、Shadow DOM 页面设置。</td><td>完成页面侧下载交互并控制性能成本。</td></tr>
-                            <tr><td><code>popup/popup.html</code></td><td>改为双工作模式，新增 PRO 授权、巡查输入、结果和导出结构。</td><td>把普通抓取与高级巡查分开，降低理解成本。</td></tr>
+                            <tr><td><code>content/content.js</code></td><td>扩展图片设置模型、CSS 悬停、按需 SD 控件、大视频入口、Shadow DOM 页面设置，以及串行保存和控件清理。</td><td>完成页面侧下载交互并控制性能成本，避免连续设置产生旧控件或状态覆盖。</td></tr>
+                            <tr><td><code>popup/popup.html</code></td><td>删除双工作区和独立巡查结果，给现有 Alexa 抓取增加 PRO 授权面板。</td><td>纠正产品定义，避免用户误以为存在两套不同的批量功能。</td></tr>
                             <tr><td><code>popup/popup.css</code></td><td>重建工具型视觉层级、稳定控件尺寸、表格和授权状态。</td><td>提高扫描效率，减少卡片和装饰噪音。</td></tr>
-                            <tr><td><code>popup/popup.js</code></td><td>同步新图片设置、工作区切换、授权状态、可选权限、API 调用结果和巡查导出。</td><td>保持单一状态源并完成专业版交互闭环。</td></tr>
-                            <tr><td><code>background/background.js</code></td><td>校验服务地址、读取授权码、构建 API 请求、处理超时与授权失败。</td><td>将令牌和跨域调用集中在可信的 Background 边界。</td></tr>
-                            <tr><td><code>manifest.json</code></td><td>声明 HTTPS 与本机巡查服务为可选 host permission。</td><td>仅在用户实际运行巡查时申请权限，避免默认扩大授权面。</td></tr>
-                            <tr><td><code>README.md</code>、<code>PROJECT_DOCUMENTATION.md</code>、模块文档</td><td>同步新按钮名称、默认行为、专业版 API 和风险边界。</td><td>避免文档继续描述旧的 DL/XL 和直接显示行为。</td></tr>
+                            <tr><td><code>popup/popup.js</code></td><td>同步新图片设置，管理授权激活、状态、可选权限和高级抓取按钮。</td><td>保持单一抓取流程，并把界面授权作为第一层交互限制。</td></tr>
+                            <tr><td><code>background/background.js</code></td><td>生成随机设备 ID，调用 <code>/v1/licenses/activate</code>，校验 <code>alexa_scraping</code>，在开始/继续前复验。</td><td>把授权凭据和真正的执行门槛集中在 Background。</td></tr>
+                            <tr><td><code>manifest.json</code></td><td>声明 HTTPS 与本机授权服务为可选 host permission。</td><td>仅在用户激活授权时申请对应服务域名权限。</td></tr>
+                            <tr><td><code>README.md</code>、<code>PROJECT_DOCUMENTATION.md</code>、模块文档</td><td>统一“媒体下载免费、Alexa 抓取 PRO”的描述、授权协议和风险边界。</td><td>删除所有独立链接巡查和 <code>/api/asin-inspection</code> 的错误说明。</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -387,9 +389,11 @@
                             <tr><td><code>JSON.parse(manifest.json)</code></td><td><span class="status done">通过</span></td></tr>
                             <tr><td>Popup JavaScript 引用的 DOM ID</td><td><span class="status done">全部存在</span></td></tr>
                             <tr><td>Popup 与修改记录 HTML 的 Headless 浏览器静态渲染</td><td><span class="status done">无空白、重叠或横向溢出</span></td></tr>
-                            <tr><td>Popup 工作模式切换</td><td><span class="status done">抓取 / 链接巡查状态切换正常</span></td></tr>
-                            <tr><td>真实 Chrome 扩展页面与 Amazon DOM 手动验证</td><td><span class="status note">加载扩展后执行</span></td></tr>
-                            <tr><td>远程生产巡查 API</td><td><span class="status note">需要实际 HTTPS 地址与有效授权码</span></td></tr>
+                            <tr><td>Popup 产品结构</td><td><span class="status done">只保留 Alexa / Rufus 高级抓取主流程，媒体下载设置明确为免费</span></td></tr>
+                            <tr><td>Edge 临时 unpacked 扩展 + 公开 Amazon 页面</td><td><span class="status done">通过：默认 hover/high，34 HD、0 SD、5 个大视频按钮</span></td></tr>
+                            <tr><td>页面小图标动态设置与持久化</td><td><span class="status done">通过：visible/both 为 34 HD + 34 SD；快速切回 hover/high 后为 34 HD + 0 SD，Storage 一致</span></td></tr>
+                            <tr><td>PRO 授权端到端（本地测试 API）</td><td><span class="status done">通过：无授权、401/403、缺少权益均拒绝；含 <code>alexa_scraping</code> 时可启动；撤销后再次开始/继续会锁定</span></td></tr>
+                            <tr><td>远程生产授权 API</td><td><span class="status note">需要实际 HTTPS 地址、授权数据源和有效授权码</span></td></tr>
                         </tbody>
                     </table>
                 </div>
