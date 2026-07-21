@@ -21,6 +21,7 @@
     const activeVideoDownloads = new Map();
     let imageDownloadObserver = null;
     let imageDownloadScanTimer = null;
+    let imageDownloadSettingsSaveQueue = Promise.resolve();
     const DEFAULT_IMAGE_DOWNLOAD_SETTINGS = {
         detectionEnabled: true,
         displayMode: 'hover',
@@ -2254,11 +2255,28 @@
         }
 
         async function saveSettings(changes) {
-            const nextSettings = normalizeImageDownloadSettings({
+            const previousSettings = imageDownloadSettings;
+            imageDownloadSettings = normalizeImageDownloadSettings({
                 ...imageDownloadSettings,
                 ...changes
             });
-            await chrome.storage.local.set({ imageDownloadSettings: nextSettings });
+            applyImageDownloadSettings();
+
+            if (!imageDownloadSettings.detectionEnabled) {
+                removeInjectedDownloadControls();
+            } else if (
+                previousSettings.detectionEnabled !== imageDownloadSettings.detectionEnabled ||
+                previousSettings.qualityMode !== imageDownloadSettings.qualityMode
+            ) {
+                removeInjectedDownloadControls();
+                scheduleImageDownloadScan();
+            }
+
+            const snapshot = { ...imageDownloadSettings };
+            imageDownloadSettingsSaveQueue = imageDownloadSettingsSaveQueue
+                .catch(() => {})
+                .then(() => chrome.storage.local.set({ imageDownloadSettings: snapshot }));
+            await imageDownloadSettingsSaveQueue;
         }
 
         launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
